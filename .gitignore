@@ -13,3 +13,6 @@ screen-*.png
 local.props
 tmp/
 tmp/parameter-logs/
+tmp/review/
+mcp-server/node_modules/
+mcp-server/dist/
