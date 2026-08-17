@@ -1,0 +1,29 @@
+{
+  "name": "cs1-bridge-mcp",
+  "version": "0.4.0",
+  "description": "MCP server exposing the Cities: Skylines 1 Agent Bridge as typed tools.",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  },
+  "private": true,
+  "type": "module",
+  "bin": {
+    "cs1-bridge-mcp": "dist/index.js"
+  }
+}
