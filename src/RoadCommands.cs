@@ -1,5 +1,6 @@
 using ColossalFramework;
 using ColossalFramework.Math;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SkylinesAgentBridge
@@ -35,120 +36,80 @@ namespace SkylinesAgentBridge
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Build-road validation passed.\",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"}");
             }
 
-            SimulationManager simulation = Singleton<SimulationManager>.instance;
-            NetManager net = NetManager.instance;
-            Randomizer randomizer = simulation.m_randomizer;
+            // Node reuse now goes through NodeHelper, which snaps at 8m instead of the old 2m
+            // and searches the node grid instead of all 32768 slots. The wider radius is the
+            // point: at 2m an agent's rounded coordinates land next to an existing junction
+            // rather than on it, producing the "looks connected, is not connected" segments
+            // the repo's own gotchas list warns about.
+            float snapDistance = NodeHelper.ClampSnapDistance(
+                JsonUtil.GetNumber(body, "snapDistance", NodeHelper.DefaultSnapDistance));
 
-            ushort startNode = FindNearbyNode(start, 2f, info);
-            ushort endNode = FindNearbyNode(end, 2f, info);
-            bool createdStartNode = false;
-            bool createdEndNode = false;
+            List<ushort> createdNodes = new List<ushort>();
+            List<ushort> createdSegments = new List<ushort>();
 
-            if (startNode == 0)
+            try
             {
-                if (!net.CreateNode(out startNode, ref randomizer, info, start, simulation.m_currentBuildIndex))
+                bool createdStart;
+                ushort startNode = NodeHelper.FindOrCreateNode(start, info, snapDistance, out createdStart);
+                if (createdStart)
                 {
-                    return CommandResult.Fail("Failed to create start node.");
+                    createdNodes.Add(startNode);
                 }
-                createdStartNode = true;
-            }
-            if (createdStartNode)
-            {
-                simulation.m_currentBuildIndex += 1u;
-            }
 
-            if (endNode == 0)
-            {
-                if (!net.CreateNode(out endNode, ref randomizer, info, end, simulation.m_currentBuildIndex))
+                bool createdEnd;
+                ushort endNode = NodeHelper.FindOrCreateNode(end, info, snapDistance, out createdEnd);
+                if (createdEnd)
                 {
-                    return CommandResult.Fail("Failed to create end node.");
+                    createdNodes.Add(endNode);
                 }
-                createdEndNode = true;
+
+                if (startNode == endNode)
+                {
+                    NodeHelper.Rollback(createdSegments, createdNodes);
+                    return CommandResult.Fail("Both endpoints snapped to the same node (" + startNode +
+                        "). Move them further apart or lower snapDistance.");
+                }
+
+                ushort segment = NodeHelper.CreateSegment(startNode, endNode, info, name);
+                if (segment == 0)
+                {
+                    ushort existing = NodeHelper.FindExistingSegment(startNode, endNode);
+                    return CommandResult.FromJson("{\"ok\":true,\"dryRun\":false,\"segmentId\":" + existing +
+                        ",\"startNodeId\":" + startNode +
+                        ",\"endNodeId\":" + endNode +
+                        ",\"alreadyConnected\":true" +
+                        ",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"}");
+                }
+
+                createdSegments.Add(segment);
+
+                string json = "{\"ok\":true,\"dryRun\":false,\"segmentId\":" + segment +
+                    ",\"startNodeId\":" + startNode +
+                    ",\"endNodeId\":" + endNode +
+                    ",\"alreadyConnected\":false" +
+                    ",\"createdNodeIds\":[" + string.Join(",", ToStrings(createdNodes)) + "]" +
+                    ",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"}";
+
+                Debug.Log("[SkylinesAgentBridge] Built road segment " + segment + " with prefab " + prefabName);
+                return CommandResult.FromJson(json);
             }
-            if (createdEndNode)
+            catch (System.Exception ex)
             {
-                simulation.m_currentBuildIndex += 1u;
+                NodeHelper.Rollback(createdSegments, createdNodes);
+                return CommandResult.Fail(ex is BridgeException
+                    ? ex.Message
+                    : ex.GetType().Name + ": " + ex.Message);
             }
-
-            Vector3 direction = (end - start).normalized;
-            ushort segment;
-            bool created = net.CreateSegment(
-                out segment,
-                ref randomizer,
-                info,
-                startNode,
-                endNode,
-                direction,
-                -direction,
-                simulation.m_currentBuildIndex,
-                simulation.m_currentBuildIndex,
-                false);
-
-            simulation.m_randomizer = randomizer;
-
-            if (!created)
-            {
-                return CommandResult.Fail("Failed to create road segment.");
-            }
-
-            simulation.m_currentBuildIndex += 2u;
-
-            if (name != null && name.Length > 0)
-            {
-                net.SetSegmentNameImpl(segment, name);
-            }
-
-            string json = "{\"ok\":true,\"dryRun\":false,\"segmentId\":" + segment +
-                ",\"startNodeId\":" + startNode +
-                ",\"endNodeId\":" + endNode +
-                ",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"}";
-
-            Debug.Log("[SkylinesAgentBridge] Built road segment " + segment + " with prefab " + prefabName);
-            return CommandResult.FromJson(json);
         }
 
-        private static ushort FindNearbyNode(Vector3 position, float maxDistance, NetInfo info)
+        private static string[] ToStrings(List<ushort> ids)
         {
-            NetManager net = NetManager.instance;
-            float maxDistanceSq = maxDistance * maxDistance;
-
-            for (ushort i = 1; i < net.m_nodes.m_buffer.Length; i++)
+            string[] values = new string[ids.Count];
+            for (int i = 0; i < ids.Count; i++)
             {
-                NetNode node = net.m_nodes.m_buffer[i];
-                if ((node.m_flags & NetNode.Flags.Created) == NetNode.Flags.None)
-                {
-                    continue;
-                }
-                if (!CanReuseNode(node.Info, info))
-                {
-                    continue;
-                }
-
-                Vector3 delta = node.m_position - position;
-                delta.y = 0f;
-                if (delta.sqrMagnitude <= maxDistanceSq)
-                {
-                    return i;
-                }
+                values[i] = ids[i].ToString();
             }
-
-            return 0;
-        }
-
-        private static bool CanReuseNode(NetInfo existing, NetInfo requested)
-        {
-            if (existing == null || requested == null || existing.m_class == null || requested.m_class == null)
-            {
-                return false;
-            }
-
-            if (existing == requested)
-            {
-                return true;
-            }
-
-            return existing.m_class.m_service == ItemClass.Service.Road &&
-                requested.m_class.m_service == ItemClass.Service.Road;
+            return values;
         }
 
         private static Vector3 ReadPoint(string body, string name)

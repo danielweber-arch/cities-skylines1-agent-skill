@@ -102,10 +102,53 @@ namespace SkylinesAgentBridge
             return Path.Combine(GetLocalSaveDirectory(), name + ".crp");
         }
 
+        // The save root differs per platform:
+        //   Windows  %LOCALAPPDATA%\Colossal Order\Cities_Skylines\Saves
+        //   macOS    ~/Library/Application Support/Colossal Order/Cities_Skylines/Saves
+        //   Linux    ~/.local/share/Colossal Order/Cities_Skylines/Saves
+        // DataLocation is the game's own resolver and is already correct everywhere, so
+        // ask it first and only rebuild the path by hand if the game left it empty.
         private static string GetLocalSaveDirectory()
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Colossal Order\\Cities_Skylines\\Saves");
+            try
+            {
+                string saveLocation = ColossalFramework.IO.DataLocation.saveLocation;
+                if (!string.IsNullOrEmpty(saveLocation))
+                {
+                    return saveLocation;
+                }
+
+                string appData = ColossalFramework.IO.DataLocation.localApplicationData;
+                if (!string.IsNullOrEmpty(appData))
+                {
+                    return Path.Combine(appData, "Saves");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.Log("[SkylinesAgentBridge] DataLocation was unavailable: " + ex.Message);
+            }
+
+            return Path.Combine(GetLocalApplicationDataDirectory(),
+                Path.Combine("Colossal Order", Path.Combine("Cities_Skylines", "Saves")));
+        }
+
+        // Mono resolves SpecialFolder.LocalApplicationData to ~/.local/share on every Unix,
+        // which is right for Linux but wrong for macOS. Nested Path.Combine calls keep the
+        // separator native instead of baking in Windows backslashes.
+        private static string GetLocalApplicationDataDirectory()
+        {
+            if (UnityEngine.Application.platform == RuntimePlatform.OSXPlayer ||
+                UnityEngine.Application.platform == RuntimePlatform.OSXEditor)
+            {
+                string home = Environment.GetEnvironmentVariable("HOME");
+                if (!string.IsNullOrEmpty(home))
+                {
+                    return Path.Combine(home, Path.Combine("Library", "Application Support"));
+                }
+            }
+
+            return Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         }
 
         private static string SanitizeName(string name)
