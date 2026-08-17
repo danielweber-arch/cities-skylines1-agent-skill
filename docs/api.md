@@ -42,8 +42,8 @@ Returns a small city snapshot: game time, build index, network counts, citizen c
 Returns the three demand bars shown in the CS1 UI: residential, commercial,
 and workplace demand. Values are `0..100`.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/demand
+```bash
+curl -sS http://127.0.0.1:32123/state/demand
 ```
 
 ## GET /state/chirps
@@ -53,8 +53,8 @@ sender name, sender id, text, message type, and message metadata when available.
 This is useful for reading citizen feedback such as housing demand, tax,
 traffic, service, and city satisfaction comments without OCR.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/chirps?limit=50"
+```bash
+curl -sS "http://127.0.0.1:32123/state/chirps?limit=50"
 ```
 
 ## GET /state/zones
@@ -63,8 +63,8 @@ Returns zoning cell counts and approximate area by zone type. CS1 zoning cells
 are reported as 8m x 8m cells, so `areaSquareMeters` is approximate but useful
 for comparing residential, commercial, industrial, office, and unzoned area.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/zones
+```bash
+curl -sS http://127.0.0.1:32123/state/zones
 ```
 
 ## GET /state/growables
@@ -74,8 +74,8 @@ buildings with service, sub-service, footprint size, position, active/abandoned
 state, and problem flags. Use this before zoning to avoid painting over already
 developed blocks.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/growables?limit=500"
+```bash
+curl -sS "http://127.0.0.1:32123/state/growables?limit=500"
 ```
 
 ## GET /prefabs/roads
@@ -128,8 +128,8 @@ Returns the currently configured tax rates for zoned residential, commercial,
 industrial, and office sub-services across levels. `aggregateTaxRates` mirrors
 the six tax sliders shown in the CS1 budget UI.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/economy
+```bash
+curl -sS http://127.0.0.1:32123/state/economy
 ```
 
 ## GET /state/facilities
@@ -143,11 +143,11 @@ By default this excludes internal pipe helper buildings such as `Water Pipe
 Junction` and `Heating Pipe Junction`; pass `includeMapObjects=true` when an
 agent specifically needs raw map objects.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/facilities?limit=500
-Invoke-RestMethod http://127.0.0.1:32123/state/facilities?service=HealthCare
-Invoke-RestMethod http://127.0.0.1:32123/state/facilities?service=PoliceDepartment
-Invoke-RestMethod http://127.0.0.1:32123/state/facilities?includeMapObjects=true
+```bash
+curl -sS "http://127.0.0.1:32123/state/facilities?limit=500"
+curl -sS "http://127.0.0.1:32123/state/facilities?service=HealthCare"
+curl -sS "http://127.0.0.1:32123/state/facilities?service=PoliceDepartment"
+curl -sS "http://127.0.0.1:32123/state/facilities?includeMapObjects=true"
 ```
 
 The response includes:
@@ -188,10 +188,10 @@ Returns current network segments from CS1 data, without screenshots. Optional
 service filtering is useful for checking roads, water pipes, heating pipes, and
 power lines separately.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/networks?service=Road
-Invoke-RestMethod http://127.0.0.1:32123/state/networks?service=Water
-Invoke-RestMethod http://127.0.0.1:32123/state/networks?limit=1000
+```bash
+curl -sS "http://127.0.0.1:32123/state/networks?service=Road"
+curl -sS "http://127.0.0.1:32123/state/networks?service=Water"
+curl -sS "http://127.0.0.1:32123/state/networks?limit=1000"
 ```
 
 Each segment includes `id`, `prefab`, `service`, `subService`, `problems`,
@@ -202,8 +202,8 @@ Each segment includes `id`, `prefab`, `service`, `subService`, `problems`,
 Detects road geometry that can look connected on screen but is not actually a
 proper CS1 road graph connection.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/road-anomalies?nearMissDistance=18&shortSegmentLength=32&includeDeadEnds=true"
+```bash
+curl -sS "http://127.0.0.1:32123/state/road-anomalies?nearMissDistance=18&shortSegmentLength=32&includeDeadEnds=true"
 ```
 
 Detected anomaly types:
@@ -221,15 +221,23 @@ Each anomaly includes the affected node or segment IDs plus world coordinates,
 so an agent can call `/commands/bulldoze` or add a connector road without using
 image recognition.
 
-Helper scripts:
+Inspect, then repair within a bounded area:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\inspect-road-anomalies.ps1
+```bash
+curl -sS "http://127.0.0.1:32123/state/road-anomalies?limit=500&includeDeadEnds=false"
 
-# Remove suspicious short/dead-end service roads only in a bounded area.
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\repair-road-anomalies.ps1 `
-  -MinX 450 -MaxX 620 -MinZ 90 -MaxZ 250
+# Bulldoze a specific offender, then rebuild the connection properly.
+curl -sS -X POST http://127.0.0.1:32123/commands/bulldoze \
+  -H "Content-Type: application/json" \
+  -d '{"entityType":"netSegment","id":21778,"keepNodes":false}'
+
+curl -sS -X POST http://127.0.0.1:32123/commands/connect \
+  -H "Content-Type: application/json" \
+  -d '{"from":{"x":512,"z":-88},"toService":"Road","maxDistance":200}'
 ```
+
+The `.ps1` helpers under `scripts/` are the original Windows tooling and have not been
+ported; drive the endpoints directly, or use the `cs1_*` MCP tools.
 
 ## GET /state/external-connections
 
@@ -238,8 +246,8 @@ nodes. This is useful when a city visually has highways nearby but no outside
 cars enter because the local road graph is still separate from the highway
 network.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/external-connections?limit=50"
+```bash
+curl -sS "http://127.0.0.1:32123/state/external-connections?limit=50"
 ```
 
 The response includes `cityConnectedToOutside`,
@@ -252,8 +260,8 @@ Detects service buildings whose footprint intersects a road segment. This is
 for API-side QA when a building appears to be placed through a road, without
 using screenshots.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/building-anomalies?limit=200
+```bash
+curl -sS "http://127.0.0.1:32123/state/building-anomalies?limit=200"
 ```
 
 ## GET /state/zone-anomalies
@@ -262,8 +270,8 @@ Detects mottled zoning from CS1 zone blocks without using screenshots. This is
 useful when circular or overlapping zone paint leaves residential, commercial,
 industrial, office, and unzoned cells mixed inside the same block.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/zone-anomalies?limit=200&includeUnzonedHoles=true"
+```bash
+curl -sS "http://127.0.0.1:32123/state/zone-anomalies?limit=200&includeUnzonedHoles=true"
 ```
 
 Detected anomaly types:
@@ -307,6 +315,141 @@ When `dryRun` is `false`, the mod creates two nodes and one segment with `NetMan
 ## POST /commands/build-road
 
 Compatibility alias for `/commands/build-network`.
+
+## POST /commands/build-grid
+
+Builds a whole rectangular road lattice: `(cols+1) x (rows+1)` nodes, then every segment
+between them. Nodes are created first and segments second — interleaving them lets a segment
+be created against a node a later snap would have merged away.
+
+Endpoints within `snapDistance` (default 8m) of an existing node reuse it, so the grid joins
+the existing network as real intersections rather than crossings.
+
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/build-grid \
+  -H "Content-Type: application/json" \
+  -d '{"roadPrefab":"Basic Road","origin":{"x":200,"z":-300},
+       "cols":6,"rows":4,"spacing":80,"rotationDegrees":0,"opId":"grid-downtown-01"}'
+```
+
+| field | default | notes |
+|---|---|---|
+| `roadPrefab` | `Basic Road` | must match a name from `/prefabs/roads` |
+| `origin` | `{0,0}` | lattice corner; cells grow toward +x and +z |
+| `cols`, `rows` | 4 | `cols * rows` must be <= 400 |
+| `spacing` | 80 | metres, 32..256 |
+| `rotationDegrees` | 0 | rotates the lattice about `origin` |
+| `snapDistance` | 8 | node reuse radius, 0..64 |
+| `opId` | none | idempotency key — a retry replays instead of rebuilding |
+| `dryRun` | false | returns the plan and `blockCenters` without building |
+
+Returns `nodeIds`, `createdNodeIds`, `reusedNodes`, `segmentIds`, `skippedSegments`, `bbox`,
+and `blockCenters`. `blockCenters` is the payoff: the coordinate of every city block, ready to
+pass straight to `/commands/set-zone`.
+
+**Why 80m.** CS1 zoning cells are 8m and zoneable depth is 4 cells (32m) per side, so 80m of
+spacing fills the block from both sides with 16m left for the road. 100m leaves an unzoneable
+dead strip down the middle of every block.
+
+Verify afterwards — a correct build reports zero:
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/road-anomalies?limit=500&includeDeadEnds=false"
+```
+
+## POST /commands/build-neighborhood
+
+Composes grid + connection + zoning. The connection runs before zoning, so a failure to reach
+the road network rolls the grid back rather than leaving a zoned orphan island.
+
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/build-neighborhood \
+  -H "Content-Type: application/json" \
+  -d '{"roadPrefab":"Basic Road","center":{"x":400,"z":200},"radiusOrCols":5,
+       "connectTo":{"x":380,"z":90},
+       "zoneMix":{"ResidentialLow":0.7,"CommercialLow":0.3},
+       "commercialPlacement":"perimeter","opId":"hood-north-01"}'
+```
+
+Same fields as `build-grid`, except `center` names the middle of the neighborhood rather than
+a corner, plus:
+
+| field | default | notes |
+|---|---|---|
+| `radiusOrCols` | 4 | shorthand for a square neighborhood; `cols`/`rows` override it |
+| `connectTo` | none | a point on an existing road; omit only if the grid already overlaps the network |
+| `connectMaxDistance` | 400 | search radius for `connectTo` |
+| `zoneMix` | required | zone name to relative weight, normalised |
+| `commercialPlacement` | `perimeter` | `perimeter`, `core`, or `corners` |
+| `preserveOccupied` | true | passed through to zoning |
+| `zoneRadius` | `spacing/2` | paint radius per block |
+
+`cols * rows` is capped at 144 here rather than 400, because zoning every block is the
+expensive part.
+
+Valid `zoneMix` keys, exactly: `ResidentialLow`, `ResidentialHigh`, `CommercialLow`,
+`CommercialHigh`, `Industrial`, `Office`, `Unzoned`. CS1 has no plain `Commercial` or
+`Residential` zone; the command rejects unrecognised keys with the valid list.
+
+The minority zones are placed first, into whichever blocks the placement rule favours, and the
+heaviest share fills the rest. The result is deterministic — the same request paints the same
+blocks. Zoning failures are reported per block rather than rolled back: repainting is cheap and
+non-destructive, bulldozing a built grid is not.
+
+## POST /commands/connect
+
+Joins a point to the nearest existing network node of a service. Use it after every service
+building placement.
+
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/connect \
+  -H "Content-Type: application/json" \
+  -d '{"from":{"x":512,"z":-88},"toService":"Road","maxDistance":200,"roadPrefab":"Basic Road"}'
+```
+
+| field | default | notes |
+|---|---|---|
+| `from` | `{0,0}` | the stranded point, typically a building position |
+| `toService` | `Road` | any `ItemClass.Service` name |
+| `maxDistance` | 200 | search radius, 1..1000 |
+| `roadPrefab` | `Basic Road` | prefab for the connecting segment |
+
+`alreadyConnected:true` means the point was already on the network. That is a success, not a
+condition to retry.
+
+## GET /capture
+
+Renders an orthographic top-down view into an off-screen texture and returns `image/png`.
+Deliberately not the player's camera: the agent gets a deterministic frame of a named area, and
+the human's view does not move as a side effect.
+
+```bash
+curl -sS "http://127.0.0.1:32123/capture?x=400&z=200&size=1200&pixels=1024&mode=None" -o review.png
+```
+
+| query | default | notes |
+|---|---|---|
+| `x`, `z` | 0 | world centre of the view |
+| `size` | 1000 | metres covered edge to edge |
+| `pixels` | 1024 | square resolution, capped at 1024 |
+| `mode` | `None` | CS1 `InfoManager.InfoMode` name |
+| `settleFrames` | 8 | frames to wait after switching overlay |
+| `allowBlank` | false | return the image even if it rendered as one flat colour |
+
+Response headers `X-Bridge-Info-Mode` and `X-Bridge-Distinct-Colors` report the overlay that
+was actually used and how varied the output was.
+
+Switching info view is not instantaneous in CS1 — the overlay fades in over several frames — so
+a capture is a state machine driven from the game thread across frames, not a single call. The
+previous overlay is always restored.
+
+Useful modes: `None` (plain view, and the one that shows zoning colours), `Traffic`, `Water`,
+`Electricity`, `LandValue`, `Pollution`, `NoisePollution`, `Health`, `Happiness`, `Density`,
+`Garbage`, `Education`, `TerrainHeight`, `Transport`. CS1 has no `Zone` overlay; the name is
+accepted and resolves to `None`.
+
+A response reporting a single flat colour means the off-screen camera did not pick up the
+scene. That is surfaced as an error rather than a valid PNG of nothing.
 
 ## POST /commands/set-zone
 
@@ -410,8 +553,8 @@ Turns an existing building on or off by id.
 Disables known broken assets in CS1's package asset state so the game should not
 use them. The current blocked family is `Block Services - ...`.
 
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:32123/commands/disable-blocked-assets
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/disable-blocked-assets
 ```
 
 ## POST /commands/bulldoze
@@ -419,14 +562,10 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:32123/commands/disable-bloc
 Deletes a problem entity by API. Useful for agent-side repair loops after
 reading `/state/problems`.
 
-```powershell
-$body = @{
-  entityType = "netSegment"
-  id = 21778
-  keepNodes = $false
-} | ConvertTo-Json
-
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:32123/commands/bulldoze -Body $body -ContentType "application/json"
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/bulldoze \
+  -H "Content-Type: application/json" \
+  -d '{"entityType":"netSegment","id":21778,"keepNodes":false}'
 ```
 
 Supported `entityType` values:
@@ -441,19 +580,21 @@ Requests an in-game save through CS1's `SavePanel.SaveGame`, the same code path
 used by the normal UI save button. The game writes the `.crp` package
 asynchronously, so poll `/state/saves` until the returned file appears.
 
-```powershell
-$body = @{ name = "AgentAutoSave-20260512-1900" } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:32123/commands/save -Body $body -ContentType "application/json"
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/save \
+  -H "Content-Type: application/json" \
+  -d '{"name":"AgentAutoSave-20260512-1900"}'
 
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\save-city.ps1 -Name AgentAutoSave-test
+# The file appears a few seconds later; poll until it exists.
+curl -sS http://127.0.0.1:32123/state/saves
 ```
 
 ## GET /state/saves
 
 Lists local `.crp` saves with paths, timestamps, and file sizes.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/saves
+```bash
+curl -sS http://127.0.0.1:32123/state/saves
 ```
 
 ## POST /commands/set-simulation-speed

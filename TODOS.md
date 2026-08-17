@@ -1,0 +1,111 @@
+# TODOS
+
+Findings and follow-ups. `[x]` means fixed and verified in this repo; the rest are real but
+deliberately out of scope, with enough context to pick up cold.
+
+## Fixed — macOS port (branch `macos-port`)
+
+- [x] **Save directory was Windows-only** — `src/SaveCommands.cs:105`
+  `Path.Combine(GetFolderPath(LocalApplicationData), "Colossal Order\\Cities_Skylines\\Saves")`
+  had two bugs on macOS: Mono resolves `LocalApplicationData` to `~/.local/share`, and the
+  embedded backslashes are literal filename characters on Unix. Verified under Mono 6.14: the
+  original expression produces `/Users/<me>/.local/share/Colossal Order\Cities_Skylines\Saves`,
+  which does not exist, so `/state/saves` returned an empty list and `/commands/save` reported a
+  path no file ever appeared at. Now resolved through `ColossalFramework.IO.DataLocation.saveLocation`
+  (confirmed by disassembly to be `localApplicationData + "Saves"`, not the Steam Cloud folder),
+  with a platform-aware fallback.
+- [x] **Culture-sensitive query parsing** — `src/ApiServer.cs`
+  Measured under Mono 6.14 with `CurrentCulture = de-DE`: `float.TryParse("18.5")` returns
+  **true with the value 185** — `.` read as a group separator. `?nearMissDistance=18.5` silently
+  applied a threshold 10x too large. Now `CultureInfo.InvariantCulture` throughout.
+- [x] **Culture-sensitive `Content-Length` match** — `src/ApiServer.cs`
+  Now `StringComparison.OrdinalIgnoreCase`. Hardening, not a bug fix: the suspected Turkish
+  `I`/`i` failure was tested under `tr-TR` and does **not** reproduce, because `Content-Length`
+  contains no `i`.
+
+## Fixed — v0.4 upgrade
+
+- [x] **Node reuse was 2m and O(all slots)** — `src/NodeHelper.cs`
+  `RoadCommands.FindNearbyNode` snapped at 2m and scanned all 32768 node slots. At 2m an agent's
+  rounded coordinates land *next to* a junction rather than on it, which is the documented
+  "looks connected, is not connected" gotcha. Now an 8m snap over the `m_nodeGrid` cells covering
+  the search radius only. `NodeHelper` is the single place nodes and segments are created.
+- [x] **Composite commands** — `src/CompositeCommands.cs`
+  `/commands/build-grid`, `/commands/build-neighborhood`, `/commands/connect`. Lattice built
+  nodes-first then segments, rollback on failure, `opId` idempotency, bounded at 400 cells
+  (144 for a neighborhood, where zoning is the expensive half).
+- [x] **Capture endpoint** — `src/CaptureCommands.cs`
+  `GET /capture` renders an off-screen orthographic top-down PNG with an info-view overlay.
+  Implemented as a frame-driven state machine because `InfoManager.SetCurrentMode` fades in over
+  several frames — rendering in the same frame captures the previous overlay.
+- [x] **Unbounded `Content-Length` allocation** — `src/ApiServer.cs`
+  Was `new byte[contentLength]` on an unvalidated client number; `Content-Length: 2000000000`
+  would have asked Unity for 2 GB and taken the game with it. Now capped at 4 MB, negatives
+  rejected, and a truncated body is an error instead of being parsed as complete.
+- [x] **IPv4-only listener** — `src/ApiServer.cs`
+  `localhost` resolves to `::1` first on macOS, so the most natural URL an agent types hit a
+  refused connection. Now binds `127.0.0.1` and `::1` separately. Still loopback only.
+- [x] **`Debug.Log` from background threads** — `src/BridgeLog.cs`
+  Unity's logger is not thread-safe on the runtime CS1 ships. Accept and worker threads now
+  buffer messages; the game thread drains them once per frame.
+- [x] **Wait handle leak** — `src/CommandQueue.cs`
+  Two `ManualResetEvent`s per request were allocated and never disposed. Each is an OS file
+  descriptor and macOS ships a far lower default `ulimit -n` than Windows, so a long session
+  would eventually fail to open anything. Now one per request, disposed via a two-party release
+  so neither thread can dispose while the other still holds it, and a timed-out command is
+  abandoned rather than executed after its caller gave up.
+- [x] **No server shutdown / `/health` unreachable before a city loaded** — `src/AgentBridge.cs`
+  The listener started at level load, so `/health` was a refused connection from the main menu —
+  indistinguishable from "the mod is not installed". Now starts at mod enable and stops at mod
+  disable, and `ApiServer.Stop()` exists.
+- [x] **`AcceptLoop` hot-spin** — `src/ApiServer.cs`
+  Gives up after 20 consecutive accept failures instead of burning a core.
+- [x] **MCP layer** — `mcp-server/`
+  32 typed tools, arguments validated before the game sees them, and response filtering.
+  Measured: `/state/networks` with 1500 segments goes from ~56,900 tokens raw to ~1,200 filtered.
+
+## Open — not done, with reasons
+
+- [ ] **Nothing has been exercised inside a running game.** Everything above is verified by
+  compilation against the real CS1 assemblies, by executing the built DLL's parsing and zone-mix
+  logic under Mono, and by driving the MCP server against a mock bridge. The parts that can only
+  be proven in-game are: node snapping against real geometry, `SetZone` coverage per block, the
+  `/capture` camera actually picking up the scene, and composite command timing. Run the
+  acceptance tests in `SKILL.md` first.
+- [ ] **`/capture` may render blank.** CS1 draws through its own `RenderManager` tied to the main
+  camera, so a second camera may not pick up terrain and buildings. The endpoint detects a
+  uniform image and returns an error rather than a valid PNG of nothing, so the failure is loud.
+  If it does come back blank, the fallback is to reposition the game's own camera via
+  `CameraController`, render, and restore — visible to the player but guaranteed correct.
+- [ ] **Zone paint radius bleeds between blocks** — `src/CompositeCommands.cs` `ApplyZoneMix`
+  Zone blocks sit alongside roads, so a radius of `spacing/2` around a block centre can also
+  catch blocks belonging to the adjacent cell across the road. The per-block `changedCells`
+  in the response is how you detect it. A precise fix needs block-to-cell mapping rather than
+  a radius query.
+- [ ] **Query pairs split on every `=`** — `src/ApiServer.cs`
+  `pairs[i].Split('=')` yields more than 2 parts when a value contains `=`, and the pair is then
+  ignored because the code requires `parts.Length == 2`. No current parameter takes an `=`.
+- [ ] **PowerShell launchers are unported and unportable** — `scripts/start-resume.ps1`,
+  `scripts/start-new-map.ps1`
+  Both drive the Paradox launcher with `user32.dll` P/Invoke and screen coordinates hardcoded for
+  one machine. `SKILL.md` now tells the operator to launch through Steam by hand. A macOS
+  equivalent needs AppleScript UI scripting plus Accessibility permission — decide whether that
+  is worth building.
+- [ ] **Remaining `.ps1` helpers unported** — `scripts/smoke-test.ps1`, `scripts/develop-*.ps1`,
+  `scripts/repair-*.ps1`, `scripts/inspect-road-anomalies.ps1`, `scripts/log-city-parameters.ps1`,
+  `scripts/check-doc-links.ps1`, `scripts/save-city.ps1`
+  These are API-only, so they port to bash + curl cleanly. `smoke-test.ps1` is the highest value:
+  it is the only end-to-end check of the API surface.
+- [ ] **`README.ja.md` and `docs/ja/**` still describe the Windows/PowerShell workflow.**
+  The English README, SKILL.md, and docs/api.md were ported; the Japanese translations were not.
+- [ ] **No cost model.** The agent can bankrupt the city and will not see it coming.
+  `/state/economy` exists but nothing forces a spend check before a build. A `budgetRemaining`
+  guard inside the composite commands would be cheap insurance.
+- [ ] **Polling is still the model.** An SSE `GET /events` endpoint pushing problems as they occur
+  would beat asking twelve endpoints whether anything broke — a bigger token win than the MCP
+  filters.
+- [ ] **Traffic is untouched.** The bridge can *detect* congestion via `mode=Traffic` and
+  `/state/problems` but has no tools to fix it beyond bulldoze-and-rebuild. Real CS1 skill is
+  intersection design and network hierarchy; that is the v2 target.
+- [ ] **Exception detected by English message substring** — `src/GameThreadHelpers.cs:86`
+  Left as-is: the string is hardcoded English in the shipped assembly.
