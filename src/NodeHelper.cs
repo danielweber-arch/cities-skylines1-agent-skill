@@ -209,17 +209,46 @@ namespace SkylinesAgentBridge
             Randomizer randomizer = simulation.m_randomizer;
 
             ushort segment;
-            bool ok = net.CreateSegment(
-                out segment,
-                ref randomizer,
-                prefab,
-                startNode,
-                endNode,
-                direction,
-                -direction,
-                simulation.m_currentBuildIndex,
-                simulation.m_currentBuildIndex,
-                false);
+            // PlayerNetAI.CreateSegment ends with m_createPassMilestone.Unlock() (e.g. "Metro Track
+            // Created"), which raises UnlockManager events through ThreadHelper.dispatcher. The bridge
+            // runs on the main thread, so that throws "Already in the same thread" after the segment
+            // is half built (no lanes, never initialised). Detach the milestone for the call and
+            // replay the unlock on the simulation thread, where the game's own tools run it.
+            PlayerNetAI playerAI = prefab.m_netAI as PlayerNetAI;
+            ManualMilestone passMilestone = playerAI != null ? playerAI.m_createPassMilestone : null;
+            if (passMilestone != null)
+            {
+                playerAI.m_createPassMilestone = null;
+            }
+
+            bool ok;
+            try
+            {
+                ok = net.CreateSegment(
+                    out segment,
+                    ref randomizer,
+                    prefab,
+                    startNode,
+                    endNode,
+                    direction,
+                    -direction,
+                    simulation.m_currentBuildIndex,
+                    simulation.m_currentBuildIndex,
+                    false);
+            }
+            finally
+            {
+                if (passMilestone != null)
+                {
+                    playerAI.m_createPassMilestone = passMilestone;
+                }
+            }
+
+            if (ok && passMilestone != null)
+            {
+                ManualMilestone milestone = passMilestone;
+                simulation.AddAction(delegate { milestone.Unlock(); });
+            }
 
             simulation.m_randomizer = randomizer;
 
