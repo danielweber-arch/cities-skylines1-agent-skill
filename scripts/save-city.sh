@@ -44,6 +44,8 @@ file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"; }
 # ISO-8601 local time for an epoch, GNU date first, then BSD/macOS date.
 iso_time() { date -d "@$1" +%Y-%m-%dT%H:%M:%S%z 2>/dev/null || date -r "$1" +%Y-%m-%dT%H:%M:%S%z; }
 
+# Overwriting an existing save: only a file written after this moment counts.
+started=$(date +%s)
 body=$(jq -n --arg name "$NAME" '{name: $name}')
 response=$(api_post "/commands/save" "$body") || { printf '%s\n' "$response" >&2; exit 1; }
 printf '%s\n' "$response" | jq .
@@ -53,9 +55,12 @@ path=$(printf '%s' "$response" | jq -r '.path // empty')
 
 deadline=$(( $(date +%s) + 10#$TIMEOUT ))
 while :; do
-    if [ -e "$path" ]; then
-        mtime=$(file_mtime "$path")
+    if [ -e "$path" ] && [ "$(file_mtime "$path")" -ge "$started" ]; then
+        # Wait for the size to settle so a half-written file is not reported.
         size=$(wc -c < "$path" | tr -d ' ')
+        sleep 2
+        [ "$(wc -c < "$path" | tr -d ' ')" = "$size" ] || continue
+        mtime=$(file_mtime "$path")
         jq -n --arg full "$path" --arg when "$(iso_time "$mtime")" --argjson len "$size" \
             '{FullName: $full, LastWriteTime: $when, Length: $len}'
         exit 0
