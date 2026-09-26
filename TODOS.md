@@ -126,6 +126,8 @@ deliberately out of scope, with enough context to pick up cold.
 - [ ] **Line and policy mutations run on Unity's main thread, not the simulation thread** — the game UI
   applies them through `SimulationManager.AddAction`. Possible data race, same risk as the existing
   `CreateBuilding` path. Fix: route mutations through `SimulationManager.AddAction` and wait.
+- [x] **Chat panel off the right edge on 16:10 screens** — fixed 2026-09-26 in `src/ChatPanel.cs`: position and
+  size clamp to the visible width (fixedHeight x Screen aspect) every frame on resolution change. Needs a restart.
 - [ ] **Chat panel: partly proven in-game** (2026-09-26: the player sent 6 messages from the panel with camera and
   selection attached, and replies/updates rendered). Still unconfirmed: — `src/ChatPanel.cs`: hotkey swallowing while typing, Enter
   keeping focus, Esc not opening the pause menu, Ctrl/Cmd+Shift+C toggle, sprite names, layout.

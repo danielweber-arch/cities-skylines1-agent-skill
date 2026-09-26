@@ -306,8 +306,17 @@ namespace SkylinesAgentBridge
                 return true;
             }
 
-            return existing.m_class.m_service == ItemClass.Service.Road &&
-                requested.m_class.m_service == ItemClass.Service.Road;
+            if (existing.m_class.m_service == ItemClass.Service.Road &&
+                requested.m_class.m_service == ItemClass.Service.Road)
+            {
+                return true;
+            }
+
+            // Track, pipes and lines of the same family (e.g. "Train Track" onto a "Train Station
+            // Track" platform node, an elevated or bridge node) join like the game's own tools do.
+            return existing.m_class.m_service == requested.m_class.m_service &&
+                existing.m_class.m_subService == requested.m_class.m_subService &&
+                existing.m_class.m_layer == requested.m_class.m_layer;
         }
 
         public static float ClampSnapDistance(float requested)
