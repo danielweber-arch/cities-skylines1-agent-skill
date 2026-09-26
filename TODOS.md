@@ -213,3 +213,6 @@ deliberately out of scope, with enough context to pick up cold.
   intersection design and network hierarchy; that is the v2 target.
 - [ ] **Exception detected by English message substring** — `src/GameThreadHelpers.cs:86`
   Left as-is: the string is hardcoded English in the shipped assembly.
+
+- [x] `scripts/save-city.sh` reported success on an overwrite without waiting for the new write: it polled only for file existence (scripts/save-city.sh, loop after `/commands/save`). Impact: a save announced as done was not done (TAmpa b2, 2026-09-26 17:0x). Fix: require mtime >= request time and a stable size. Fixed in the commit that adds this entry.
+- [ ] City Train Line 69 (31333 <-> 47366) shows LineNotConnected on both stops after 3 game days; no track path between the two stations in at least one direction. Rail planner tracing the graph.
