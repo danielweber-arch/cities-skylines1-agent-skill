@@ -23,3 +23,14 @@ batches:
 - B8 names: lines 4 Laurel North, 13 Laurel South, 97 Station Link, 142 West CBD Monuments & Airport (SetLineName via AddAction confirmed working).
 - B8 rail line: Train Line 69 "Tampa Rail North-South" stops 31333 (node 29102) <-> 47366 (node 29101). After 3 game days: LineNotConnected, 0/2 trains. Open.
 - Player goal (chat 4): 10x rail riders (0 today) and 10x harbor (29 -> 290+).
+- B9 rail fix (plan tmp/tampa/rail-plan.json ranks 1 and 3; rank 2 fillets skipped until measured need):
+  - Cause (planner, measured turn angles): 31333 (via E6 35757 at 3488) and 47366 (via R3 7884 at 2791) both lead only EAST on the mainline; no reversal possible, so Line 69 had no path.
+  - Rank 1: S-curve 19014 -> 20865, segments 6335 30988 31807 34047 31810 25291 33470 36510 17793 21432 716 17456 19935 24266; new nodes 9774 9114 5984 30777 4184 27466 29328 14442 6106 16911 5471 31731 10341. Bulldozed 15916, 26053 (ours) and 19115 (existing 48 m 115-degree stub; verified 19014->16673->10066->20865 before removal).
+  - Rank 3: chord 29059 -> 4101, segments 21224 9838 8876 3746 12356 30405 28076 12763 14482 12380 12845 15561 31962 | 34119 35242 32821 9093 3015 1831; gap between nodes 13277 and 30510 across Dixon Street 18077 left for the player (bridge cannot make level crossings).
+  - Saved TAmpa b2 17:32:42 (verified mtime).
+- B10 harbor (plan tmp/tampa/harbor-plan.json):
+  - R1 Laurel Link: Medium Road seg 32938, 14315 -> 25532 (both reused). roadTerrainCliff 26.9 m (cosmetic).
+  - R2 Harbor02 Access: segs 20155, 35650, 16737, 11927 (Medium Road Bridge over Canal3), 21290; 9445 -> 17258; new nodes 23085 22226 11922 25519. No segment problems; cliff anomalies 17-28 m.
+  - R3 Bay Ferry: Ship line 224, Harbor 23322 <-> Harbor02 31587, 3/3 ships running after ~3 game days.
+  - Harbor02 still "Garbage, MajorProblem" right after build; re-check after 2 game weeks.
+  - Saved TAmpa b2 17:36:58.
