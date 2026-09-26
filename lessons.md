@@ -51,3 +51,14 @@
 ### 2026-09-26 — the working save is the one the player loaded
 - **Situation:** The player saved `TAmpa b2` themselves and loaded it; the "one save" rule named `TAmpa-transit-B7`.
 - **Rule:** The one working save is whatever the player currently has loaded (check the newest `.crp` mtime vs the load time). If the player switches saves, the working save switches with them. Never overwrite an older name the player has moved on from.
+
+### 2026-09-26 — transport lines do not re-path after track is fixed
+- **Situation:** Train Line 69 had LineNotConnected; the missing track was then built.
+- **Action:** Waited ~1 game day for it to clear.
+- **Result:** Still LineNotConnected with 0/2 trains. Deleted and recreated the same line: 2/2 trains, no problems within ~1 game day.
+- **Rule:** After fixing the network under a broken line, recreate (or edit a stop of) the line to force path recalculation; don't wait for it.
+
+### 2026-09-26 — build-network will not join a shared road/rail node
+- **Situation:** An access road was planned to end on Richardson Avenue's end node 30970, which the rail chain also uses.
+- **Result:** The bridge created a duplicate node 25531 on top of it (createdNodeIds non-empty) and the road was a dead end.
+- **Rule:** Any createdNodeIds on an endpoint you meant to join is a failure; check it every call. Pick a road-only node (list nodes by segment prefab) for the join.

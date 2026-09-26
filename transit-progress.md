@@ -34,3 +34,10 @@ batches:
   - R3 Bay Ferry: Ship line 224, Harbor 23322 <-> Harbor02 31587, 3/3 ships running after ~3 game days.
   - Harbor02 still "Garbage, MajorProblem" right after build; re-check after 2 game weeks.
   - Saved TAmpa b2 17:36:58.
+- B11 rail route 1 (rail-plan rank 4):
+  - Chord gap across Dixon St built by bridge as plain Train Track seg 25331 (13277 -> 30510), no crossing node (player authorised "make any track changes you need").
+  - Line 69 did not re-path after the track fix; deleted and recreated as Line 180 (2/2 trains, no problems).
+  - Stations: N 20505 (2728,4192), M2 46988 (3529.1,3933.6), M 22214 (3344.5,3004). Bulldozed chain segs 3312, 20863, 14754, 29339 (station hosts) and house 47869.
+  - N spur segs 6408 12499 23150 1305 15569 28193 25685 26155 17631 30736 (17228 -> 14383). M2 links 3852, 4191; M links 28672, 10023 (all reused platform nodes).
+  - Access roads: N 34413, 30326 (-> 6148); M2 15999 5180 5808 424 8653 (-> 18367); M 4934, 30029 (-> 28285). The planned M end at 30970 did not join (shared road/rail node; CanReuseNode refuses) — rerouted.
+  - Line 180 edit: 8 stops 31333-M-M2-47366-N-47366-M2-M; 3/3 trains, no problems. Saved 17:45:58.
