@@ -68,3 +68,8 @@
 - **Action:** Saved the working save (newest .crp), SIGTERM'd `Cities`, relaunched `Cities.app/Contents/MacOS/Cities --continuelastsave` from the install folder with `SteamAppId=255710 SteamGameId=255710` (the Paradox launcher's Resume uses exactly `./Cities --continuelastsave`).
 - **Result:** No launcher, city loaded in ~80 s straight into the save; new DLL live.
 - **Rule:** Use `scripts/restart-game.sh` after saving. The save must be the newest file in Saves/ — `--continuelastsave` loads the most recent one.
+
+### 2026-09-26 — building Metro Track threw "Already in the same thread"
+- **Situation:** First real Metro Track piece through build-network (to pass the "Metro Track Created" milestone that gates metro lines).
+- **Result:** PlayerNetAI.CreateSegment ends with m_createPassMilestone.Unlock() → UnlockManager.CheckMilestone → ThreadHelper.dispatcher, which throws on the main thread. The segment was left half-built (end node 0 after rollback) and had to be bulldozed.
+- **Rule:** Any game call that can fire UI/unlock events must not run on the main thread. NodeHelper.CreateSegment now detaches the milestone and replays Unlock() via SimulationManager.AddAction; metro unlocked 30 s later. After any failed network call, list the segments in the area and remove orphans (endNode 0).
