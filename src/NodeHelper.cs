@@ -163,6 +163,12 @@ namespace SkylinesAgentBridge
             if (elevation != 0f)
             {
                 net.m_nodes.m_buffer[node].m_elevation = (byte)Mathf.Clamp(Mathf.RoundToInt(Mathf.Abs(elevation)), 1, 255);
+                if (elevation < 0f)
+                {
+                    // NetTool marks tunnel nodes this way; without it the node renders and
+                    // simulates as if it sat on the surface.
+                    net.m_nodes.m_buffer[node].m_flags |= NetNode.Flags.Underground;
+                }
             }
 
             simulation.m_currentBuildIndex += 1u;
