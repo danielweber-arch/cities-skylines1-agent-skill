@@ -41,8 +41,20 @@ It installs to:
 ```
 
 Enable **Skylines Agent Bridge** in the CS1 content manager once. Then launch Cities: Skylines
-through Steam and load a city from the **Resume**/**Load Game** menu. There is no scripted
-launcher on macOS.
+through Steam with `./scripts/start-resume.sh`, which waits for `/health` to report a loaded
+city. The launcher and in-game clicks (Play, **Resume**/**Load Game**) stay manual on macOS.
+
+Helper scripts (all take `--base-url`, default `http://127.0.0.1:32123`, except the launcher and `review.sh`):
+
+| Task | Script |
+|------|--------|
+| Launch and wait for a loaded city | `./scripts/start-resume.sh` |
+| End-to-end API check | `./scripts/smoke-test.sh` |
+| Save and verify the `.crp` | `./scripts/save-city.sh --name X` |
+| Road anomaly hints | `./scripts/inspect-road-anomalies.sh` |
+| Bounded stub repair | `./scripts/repair-road-anomalies.sh --dry-run` first, then without it |
+| Time-series logging | `./scripts/log-city-parameters.sh` |
+| Render an area | `./scripts/review.sh <x> <z> [size] [mode]` |
 
 The API answers from the main menu, so a refused connection means the mod is not loaded — not
 that the city is still loading. `/health` reports `levelLoaded:false` until a city is open, and

@@ -82,6 +82,14 @@ curl -sS http://127.0.0.1:32123/state/summary
 
 The API answers from the main menu, so a refused connection means the mod is not loaded.
 
+Helper scripts:
+
+- `./scripts/start-resume.sh`: launch through Steam, prompt you to load a city, wait for `levelLoaded`.
+- `./scripts/smoke-test.sh`: read-only end-to-end API check with dry-run commands.
+- `./scripts/save-city.sh --name X`: save and wait for the `.crp` to appear on disk.
+- `./scripts/inspect-road-anomalies.sh`: print road anomalies with a repair hint for each.
+- `./scripts/review.sh <x> <z> [size] [mode]`: capture a top-down render and print its path.
+
 ### MCP server
 
 For agent use, register the typed tool layer instead of driving curl. `.mcp.json` in the
@@ -97,8 +105,8 @@ tens of thousands of tokens down to hundreds — a 1500-segment `/state/networks
 
 Development uses a lightweight Git Flow model: feature branches target `develop`, while releases and hotfixes target `main`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch and AI review workflow.
 
-Launch Cities: Skylines through Steam and load a city from the Resume / Load Game menu.
-There is no scripted launcher on macOS.
+`./scripts/start-resume.sh` launches Cities: Skylines through Steam and waits for the bridge;
+the launcher and in-game clicks (Play, Resume / Load Game) stay manual on macOS.
 
 ## 🧭 Agent Repair Pattern
 
@@ -186,7 +194,7 @@ Use $cities-skylines1-agent-skill to resume my CS1 city, inspect current problem
 ├── src/                     # CS1 mod source
 ├── mcp-server/              # Typed MCP tool layer + payload filters
 ├── templates/               # city-plan.md and progress.json starting points
-├── scripts/                 # build.sh, review.sh, and legacy Windows helpers
+├── scripts/                 # bash scripts (build, launch, smoke test, inspect/repair, save, logging); .ps1 = legacy Windows originals
 ├── docs/                    # VitePress docs and API reference
 └── .github/workflows/       # Docs validation and Pages deployment
 ```
