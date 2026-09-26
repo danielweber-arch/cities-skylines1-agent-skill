@@ -62,3 +62,9 @@
 - **Situation:** An access road was planned to end on Richardson Avenue's end node 30970, which the rail chain also uses.
 - **Result:** The bridge created a duplicate node 25531 on top of it (createdNodeIds non-empty) and the road was a dead end.
 - **Rule:** Any createdNodeIds on an endpoint you meant to join is a failure; check it every call. Pick a road-only node (list nodes by segment prefab) for the join.
+
+### 2026-09-26 — the agent CAN restart the game itself (Proven once)
+- **Situation:** New DLL needed a restart; player AFK and said "I can't restart game. Unless you can- we're stuck".
+- **Action:** Saved the working save (newest .crp), SIGTERM'd `Cities`, relaunched `Cities.app/Contents/MacOS/Cities --continuelastsave` from the install folder with `SteamAppId=255710 SteamGameId=255710` (the Paradox launcher's Resume uses exactly `./Cities --continuelastsave`).
+- **Result:** No launcher, city loaded in ~80 s straight into the save; new DLL live.
+- **Rule:** Use `scripts/restart-game.sh` after saving. The save must be the newest file in Saves/ — `--continuelastsave` loads the most recent one.
