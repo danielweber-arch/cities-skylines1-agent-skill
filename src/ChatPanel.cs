@@ -166,6 +166,7 @@ namespace SkylinesAgentBridge
                 }
 
                 HandleHotkey();
+                KeepOnScreen();
                 UpdateDragAndResize();
 
                 snapshotTimer -= realTimeDelta;
@@ -235,7 +236,7 @@ namespace SkylinesAgentBridge
             if (savedPosition.x < 0f)
             {
                 // Default: top-right quadrant, clear of the API console on the left.
-                savedPosition = new Vector3(Mathf.Max(0f, view.fixedWidth - panel.width - 24f), 92f);
+                savedPosition = new Vector3(Mathf.Max(0f, VisibleWidth(view) - panel.width - 24f), 92f);
             }
             panel.relativePosition = ClampPanelPosition(savedPosition);
 
@@ -700,11 +701,50 @@ namespace SkylinesAgentBridge
                 return position;
             }
 
-            float maxX = Mathf.Max(0f, view.fixedWidth - panel.width);
-            float maxY = Mathf.Max(0f, view.fixedHeight - panel.height);
+            // Keep the whole panel on screen: shrink it first if the screen is smaller than it.
+            float visibleWidth = VisibleWidth(view);
+            float visibleHeight = view.fixedHeight;
+            if (panel.width > visibleWidth - 8f) panel.width = Mathf.Max(MinWidth, visibleWidth - 8f);
+            if (panel.height > visibleHeight - 8f) panel.height = Mathf.Max(MinHeight, visibleHeight - 8f);
+            float maxX = Mathf.Max(0f, visibleWidth - panel.width);
+            float maxY = Mathf.Max(0f, visibleHeight - panel.height);
             position.x = Mathf.Clamp(position.x, 0f, maxX);
             position.y = Mathf.Clamp(position.y, 0f, maxY);
             return position;
+        }
+
+        // UIView.fixedWidth is the 1920-unit reference canvas. The game scales the UI by height
+        // (fixedHeight 1080), so on a 16:10 screen only 1080 * 16/10 = 1728 units are visible and a
+        // panel placed against fixedWidth ends up partly off the right edge. Use the real aspect.
+        private static float VisibleWidth(UIView view)
+        {
+            if (Screen.height <= 0)
+            {
+                return view.fixedWidth;
+            }
+            float visible = view.fixedHeight * ((float)Screen.width / (float)Screen.height);
+            return visible > 0f ? visible : view.fixedWidth;
+        }
+
+        private static int lastScreenWidth;
+        private static int lastScreenHeight;
+
+        // Re-clamp when the window or resolution changes, so the panel can never sit off-screen.
+        private static void KeepOnScreen()
+        {
+            if (panel == null)
+            {
+                return;
+            }
+            if (Screen.width == lastScreenWidth && Screen.height == lastScreenHeight)
+            {
+                return;
+            }
+            lastScreenWidth = Screen.width;
+            lastScreenHeight = Screen.height;
+            panel.relativePosition = ClampPanelPosition(panel.relativePosition);
+            savedPosition = panel.relativePosition;
+            Layout();
         }
 
         // --- Context capture (game thread) ----------------------------------------------
