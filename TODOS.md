@@ -82,6 +82,15 @@ deliberately out of scope, with enough context to pick up cold.
   be proven in-game are: node snapping against real geometry, `SetZone` coverage per block, the
   `/capture` camera actually picking up the scene, and composite command timing. Run the
   acceptance tests in `SKILL.md` first.
+- [ ] **`/capture` renders sky only in-game** — `src/CaptureCommands.cs`. Measured 2026-09-25 on a
+  fresh map: `GET /capture?x=1000&z=1970&size=1500&mode=None` returned HTTP 200, a 1024x1024 PNG
+  that is a pale teal-to-white radial gradient with no terrain, road or water, and
+  `X-Bridge-Distinct-Colors: 9`. A second capture at the interchange (620,1960, size 600) was
+  identical. The flat-colour guard does not trip because the gradient has 9 colours. The
+  off-screen camera is not picking up the scene (the risk noted under "may render blank"
+  below). Fix candidates: render through the game's `RenderManager`/main camera path, or
+  reposition `CameraController`, render, restore. Until fixed, plan and verify from state APIs
+  only.
 - [ ] **`/capture` may render blank.** CS1 draws through its own `RenderManager` tied to the main
   camera, so a second camera may not pick up terrain and buildings. The endpoint detects a
   uniform image and returns an error rather than a valid PNG of nothing, so the failure is loud.
