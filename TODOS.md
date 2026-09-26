@@ -82,6 +82,54 @@ deliberately out of scope, with enough context to pick up cold.
   be proven in-game are: node snapping against real geometry, `SetZone` coverage per block, the
   `/capture` camera actually picking up the scene, and composite command timing. Run the
   acceptance tests in `SKILL.md` first.
+- [ ] **`/commands/set-simulation-speed` unpause threw once: "InvalidOperationException: Already in
+  the same thread. Call directly"** — `src/SimulationCommands.cs:24`. Measured 2026-09-25: the
+  first `paused:false` after level load (following nine build-network calls) returned that error,
+  yet game time advanced; two later `paused:false` calls and every `paused:true` call succeeded.
+  Likely `SimulationManager.SimulationPaused`'s setter dispatching to the main thread from the
+  main thread on a specific first-transition path. Not reproduced yet; wrap the setter in a
+  try/catch that reports the resulting `SimulationPaused` state, and log the stack.
+- [x] **Any web page can drive the city (CORS `*`)** — FIXED 2026-09-26: requests with an `Origin` header and OPTIONS preflights now get 403; CORS headers removed.
+  Original finding: — `src/ApiServer.cs` `HttpResponse.Write` sends
+  `Access-Control-Allow-Origin: *` and OPTIONS returns 200, so a page open in the user's browser
+  can POST commands to 127.0.0.1:32123, and since the chat panel, inject `/chat/send` text an agent
+  acts on. Found by the chat-panel worker 2026-09-26. Fix: drop the CORS headers and reject any
+  request carrying an `Origin` header (curl, the MCP server and scripts never send one).
+- [ ] **Headless chat agent inherits the repo allow rules** — `scripts/chat-bridge.sh` runs `claude -p`
+  with `dontAsk`, but `.claude/settings.local.json` allows `Bash(./scripts/*)` and
+  `Bash(curl http://127.0.0.1:32123/*)`, so it can run any repo script. Documented in docs/chat.md.
+- [ ] **Transit endpoints are unproven in-game** — `src/TransitCommands.cs`, `src/TransitState.cs` (2026-09-26).
+  Stop snapping is an approximation of `TransportTool.GetStopPosition` (flat-distance ranking with
+  fall-through instead of the camera raycast; station distance to the building pivot; elevation on
+  stacked networks not controlled; platform chosen with the bridge's own spawn seed). Loop closure
+  relies on `TransportLine.AddStop` closing within sqr 6.25 of the first stop, never run. A line can
+  come back `Complete` and ok:true and later show `LineNotConnected` (paths are async). Line budget
+  accepted 0..500 and ticket-price range unconfirmed (UI prefab data). Edits are not atomic when the
+  game refuses a step midway. Bus-lane detection heuristic unverified.
+- [ ] **Line and policy mutations run on Unity's main thread, not the simulation thread** — the game UI
+  applies them through `SimulationManager.AddAction`. Possible data race, same risk as the existing
+  `CreateBuilding` path. Fix: route mutations through `SimulationManager.AddAction` and wait.
+- [ ] **Chat panel is unproven in-game** — `src/ChatPanel.cs`: hotkey swallowing while typing, Enter
+  keeping focus, Esc not opening the pause menu, Ctrl/Cmd+Shift+C toggle, sprite names, layout.
+- [ ] **`/commands/connect` builds a road into the building it is aimed at** — `src/CompositeCommands.cs:127`.
+  `NodeHelper.FindOrCreateNode(from, ...)` creates a node at `from`, then a segment to the nearest
+  road node, so `from` = a building's position drives a road through that building. SKILL.md,
+  the MCP server instructions and the cs1-city skill all say "always cs1_connect after placing a
+  service building", which is harmful as written. Fix: start from the building's front/road-access
+  point (AI `m_info` + angle), or refuse when `from` is inside a building footprint.
+- [ ] **Dry runs cannot size zoning changes** — `src/ZoneCommands.cs:239` (`repair-zone-clusters`
+  skips counting under dryRun, always reports `repairedBlocks 0, changedCells 0`) and `:88`
+  (`set-zone` dry run returns no `changedCells`). Measured 2026-09-25: dry run 0, real run 1,318
+  cells. Fix: count candidate cells in the dry path.
+- [ ] **`place-building` does no footprint or collision check**, dry or real — found 2026-09-25 when
+  a worker had to write its own footprint checker. Fix: test the prefab footprint against
+  segments and buildings before creating, and report overlaps in the dry run.
+- [ ] **Services placed flush with a road still show `RoadNotConnected`** — Elementary School 30955
+  and Regular Playground 43893 (Ashford, 2026-09-25), angle 90 facing an x=2120 road; the
+  operator's Library 47794 at the same geometry is connected. `RoadAccessFailed` cleared but the
+  notification persists. Cause unknown.
+- [ ] **`/state/facilities` hides Beautification buildings** unless `includeMapObjects=true`, so
+  placed parks and playgrounds look missing.
 - [ ] **`/capture` renders sky only in-game** — `src/CaptureCommands.cs`. Measured 2026-09-25 on a
   fresh map: `GET /capture?x=1000&z=1970&size=1500&mode=None` returned HTTP 200, a 1024x1024 PNG
   that is a pale teal-to-white radial gradient with no terrain, road or water, and

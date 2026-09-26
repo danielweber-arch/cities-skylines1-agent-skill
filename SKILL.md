@@ -13,7 +13,7 @@ Control a running Cities: Skylines 1 city on macOS through the local Skylines Ag
 - Resume and repair existing saves by default. Start fresh only when explicitly requested.
 - Build with composite commands. One `cs1_build_grid` beats eighty `cs1_build_network` calls.
 - After any road work, road anomalies must be zero. That is the acceptance check, not a look at the screen.
-- Every service building gets a `cs1_connect` immediately after placement.
+- Place service buildings flush with a road, front facing it. Do not `cs1_connect` from a building position (see TODOS).
 - Save after meaningful changes and verify the `.crp` file exists before saying it saved.
 - Commit repository changes after each coherent code/docs task when working inside this repository.
 
@@ -88,6 +88,10 @@ curl is the fallback for debugging the bridge itself.
 | Place services | `cs1_place_building` then `cs1_connect` |
 | Look at the result | `cs1_capture` |
 | Persist | `cs1_save` then `cs1_state_saves` |
+| Review public transport | `cs1_state_transit` (add `detail:"full"`, `includeStops:true` for stops) |
+| Find congestion | `cs1_state_traffic` |
+| Draw / change / remove a transit line | `cs1_transit_line_create`, `cs1_transit_line_edit`, `cs1_transit_line_delete` (dryRun first) |
+| Transit budget and policies | `cs1_set_service_budget`, `cs1_state_policies`, `cs1_set_policy` |
 
 Every state tool defaults to a filtered summary and takes `detail:"full"` for the raw payload.
 `full` on a developed city runs to tens of thousands of tokens — use it only for a field the

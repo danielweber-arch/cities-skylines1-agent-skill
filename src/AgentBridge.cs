@@ -43,6 +43,10 @@ namespace SkylinesAgentBridge
             CaptureCommands.Cancel();
             queue.Clear();
             OpCache.Clear();
+            ChatPanel.Destroy();
+
+            // Release any /chat/inbox long-polls so their worker threads end with the server.
+            ChatStore.Instance.WakeAll();
 
             if (server != null)
             {
@@ -56,6 +60,7 @@ namespace SkylinesAgentBridge
             levelLoaded = true;
             EnsureServer();
             AgentBridgeNotifier.Notify("API ready: Skylines Agent Bridge");
+            ChatPanel.Create();
             Debug.Log("[SkylinesAgentBridge] Level loaded. API bridge is ready.");
         }
 
@@ -70,6 +75,7 @@ namespace SkylinesAgentBridge
             OpCache.Clear();
 
             AgentBridgeNotifier.Destroy();
+            ChatPanel.Destroy();
             Debug.Log("[SkylinesAgentBridge] Level unloading. Pending API commands cleared.");
         }
 
@@ -79,6 +85,7 @@ namespace SkylinesAgentBridge
             CaptureCommands.Update();
             BridgeLog.Drain();
             AgentBridgeNotifier.Update(realTimeDelta);
+            ChatPanel.Update(realTimeDelta);
         }
 
         private void EnsureServer()

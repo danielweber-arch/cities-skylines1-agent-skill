@@ -54,13 +54,14 @@ Spine: `Medium Road` along z=1978 from the merge at (1560,1978) east to (2120,19
 - Services (as milestones unlock): Elementary School and Medical Clinic inside D1 on the spine's north side; Landfill Site south of D2 at (1680,1420) with two road links; Fire House and Police Station at D1's west end; Regular Park x2 in the outer rows; Cemetery on the collector at (1560,1740); Bus Depot at (1600,1900).
 
 ## Phases
-- [ ] P1 Highway connection — merge segments onto nodes 31748/28996, spine to (2120,1978) as 80 m `Medium Road` pieces; accept: cs1_state_external_connections.localRoadComponents == 1 and disconnectedLocalRoadComponents == 0, road_anomalies(includeDeadEnds=false).total == 0, problems.RoadNotConnected count unchanged (2, the pre-existing highway nodes)
-- [ ] P2 Core roads — accept: road_anomalies.total == 0, D1 grid built with blockCenters recorded, spine junctions are T-junctions
-- [ ] P3 Utilities — accept: power source + water source + sewage outlet exist, each cs1_connect'ed, building_anomalies.total == 0, pipes and power line reach D1
+- [x] P1 Highway connection — merge segments onto nodes 31748/28996, spine to (2120,1978) as 80 m `Medium Road` pieces; accept: cs1_state_external_connections.localRoadComponents == 1 and disconnectedLocalRoadComponents == 0, road_anomalies(includeDeadEnds=false).total == 0, problems.RoadNotConnected count unchanged (2, the pre-existing highway nodes)
+- [x] P2 Core roads — accept: road_anomalies.total == 0, D1 grid built with blockCenters recorded, spine junctions are T-junctions
+- [x] P3 Utilities — accept: power source + water source + sewage outlet exist, each cs1_connect'ed, building_anomalies.total == 0, pipes and power line reach D1
 - [ ] P4 Zoning — accept: zone_anomalies.total == 0, D1 zoned per mix with residential in <= 50-cell chunks per pass, industry only inside D2
 - [ ] P5 Services — accept: every must-have service placed and connected as its milestone unlocks; after 2 simulated weeks no NoWater/NoElectricity/NoSewage problems, and no service-coverage problems for unlocked services
 - [ ] P6 Grow to goal — accept: cs1_state_summary population >= 5000, problems.total trending down over 3 checks, saves verified. Loops P4/P5 as demand and milestones allow, keeping 20% reserve
 
 ## Amendments
+- 2026-09-25 P2: the operator is building in-game concurrently (Richardson Avenue north from the merge node, zoning in D1 west, a Water Outlet at (3405,2284)). Plan adapts: P3 powers and pipes that outlet instead of placing one; water is confirmed east at x≈3400 (y 67) and north under the Richardson bridge (y≈130). Never bulldoze operator-built entities.
 - 2026-09-25 P0: highway attachment moved from the survey's (1008,1952)/(1006,1992) to the true carriageway ends (1504,1958)/(1503,1998) after tracing the segments node by node.
 - 2026-09-25 P0: bus loop cannot be created through the API; operator draws it in-game at Boom Town.
