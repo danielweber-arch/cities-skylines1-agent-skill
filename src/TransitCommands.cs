@@ -1326,26 +1326,21 @@ namespace SkylinesAgentBridge
         private static void ApplyLineProperties(TransportManager transport, ushort lineId, string name, bool hasColor, Color32 color,
             float budget, float ticketPrice, List<string> warnings)
         {
+            // SetLineColor/SetLineName notify the UI through ThreadHelper.dispatcher.Dispatch, which
+            // throws "Already in the same thread" when called from the main thread (where the bridge
+            // queue runs). The game's own panel queues them on the simulation thread with AddAction
+            // (PublicTransportWorldInfoPanel), so do the same: fire and forget, applied within a frame.
+            SimulationManager simulation = ColossalFramework.Singleton<SimulationManager>.instance;
             if (hasColor)
             {
-                IEnumerator<bool> colorAction = transport.SetLineColor(lineId, color);
-                bool colorOk = false;
-                while (colorAction.MoveNext())
-                {
-                    colorOk = colorAction.Current;
-                }
-                if (!colorOk) warnings.Add("TransportManager.SetLineColor returned false.");
+                simulation.AddAction(transport.SetLineColor(lineId, color));
+                warnings.Add("Colour queued on the simulation thread; re-read /state/transit to confirm.");
             }
 
             if (name != null)
             {
-                IEnumerator<bool> nameAction = transport.SetLineName(lineId, name);
-                bool nameOk = false;
-                while (nameAction.MoveNext())
-                {
-                    nameOk = nameAction.Current;
-                }
-                if (!nameOk) warnings.Add("TransportManager.SetLineName returned false.");
+                simulation.AddAction(transport.SetLineName(lineId, name));
+                warnings.Add("Name queued on the simulation thread; re-read /state/transit to confirm.");
             }
 
             if (!float.IsNaN(budget))

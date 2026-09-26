@@ -98,6 +98,23 @@ deliberately out of scope, with enough context to pick up cold.
 - [ ] **Headless chat agent inherits the repo allow rules** — `scripts/chat-bridge.sh` runs `claude -p`
   with `dontAsk`, but `.claude/settings.local.json` allows `Bash(./scripts/*)` and
   `Bash(curl http://127.0.0.1:32123/*)`, so it can run any repo script. Documented in docs/chat.md.
+- [ ] **TAmpa: Harbor02 is not reachable by bus in both directions** — measured 2026-09-26: a bus loop from the
+  Harbor02 terminal platform to Jackson Ave / Laurel Blvd got LineNotConnected on the legs into and out of
+  the terminal. The Greenaway/Finch/Laurel Bridge area joins the city only through one-way highway pieces
+  (Laurel Highway 14996, Stephanie Lee Highway between nodes 18355 and 25579). Fix (an addition): a new
+  two-way road, e.g. near node 18355 to Finch node 17258. Needs the user's go-ahead on where.
+- [ ] **TAmpa: congestion snapshots are unstable** — live density differed hugely from the baseline minutes
+  apart (30101: 61 -> 100, 29347: 68 -> 97). Average several reads before calling a segment congested.
+- [ ] **User's incomplete lines 22 and 189 disappeared during TAmpa batch 2** (2026-09-26). Both were
+  1-stop "Created" bus lines with their stop in the Harbor02 bus terminal (nodes 22204, 9667). They were
+  present in the baseline and gone after the Harbor Shuttle line 197 was created (one stop snapped 103 m
+  in station mode to "segment 0") and then deleted with transit-line-delete. Cause unconfirmed: suspect
+  station-mode snapping onto the terminal platform shared their stop and ReleaseLine(197) or the game's
+  line cleanup removed them. Fix: refuse station-mode snaps for Bus unless the point is inside a bus
+  station, never create when any dry-run stop snapped > roadSnapDistance, and log every ReleaseLine id.
+- [x] **`SetLineName`/`SetLineColor` throw "Already in the same thread"** — fixed 2026-09-26 in
+  `src/TransitCommands.cs` `ApplyLineProperties`: queued with `SimulationManager.AddAction`, as the game
+  panel does. Takes effect after a game restart.
 - [ ] **Transit endpoints are unproven in-game** — `src/TransitCommands.cs`, `src/TransitState.cs` (2026-09-26).
   Stop snapping is an approximation of `TransportTool.GetStopPosition` (flat-distance ranking with
   fall-through instead of the camera raycast; station distance to the building pivot; elevation on
@@ -109,8 +126,13 @@ deliberately out of scope, with enough context to pick up cold.
 - [ ] **Line and policy mutations run on Unity's main thread, not the simulation thread** — the game UI
   applies them through `SimulationManager.AddAction`. Possible data race, same risk as the existing
   `CreateBuilding` path. Fix: route mutations through `SimulationManager.AddAction` and wait.
-- [ ] **Chat panel is unproven in-game** — `src/ChatPanel.cs`: hotkey swallowing while typing, Enter
+- [ ] **Chat panel: partly proven in-game** (2026-09-26: the player sent 6 messages from the panel with camera and
+  selection attached, and replies/updates rendered). Still unconfirmed: — `src/ChatPanel.cs`: hotkey swallowing while typing, Enter
   keeping focus, Esc not opening the pause menu, Ctrl/Cmd+Shift+C toggle, sprite names, layout.
+- [ ] **`build-network` cannot join track to platform, cargo, elevated or bridge nodes** — `src/NodeHelper.cs:297`
+  `CanReuseNode` only reuses a node of the identical prefab or road-to-road, so "Train Track" built to
+  a station platform node creates an unconnected node on top. `dryRun` returns before snapping, so it
+  cannot catch it. Found 2026-09-26 (TAmpa rail analysis). Fix: also accept same service + subService.
 - [ ] **`/commands/connect` builds a road into the building it is aimed at** — `src/CompositeCommands.cs:127`.
   `NodeHelper.FindOrCreateNode(from, ...)` creates a node at `from`, then a segment to the nearest
   road node, so `from` = a building's position drives a road through that building. SKILL.md,
