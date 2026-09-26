@@ -23,6 +23,16 @@ deliberately out of scope, with enough context to pick up cold.
   `I`/`i` failure was tested under `tr-TR` and does **not** reproduce, because `Content-Length`
   contains no `i`.
 
+- [x] **Every `.ps1` helper now has a bash + curl + jq twin** — `scripts/*.sh` (2026-09-25)
+  `smoke-test`, `save-city`, `inspect-road-anomalies`, `repair-road-anomalies`,
+  `develop-starter-city`, `develop-city-with-infrastructure`, `repair-service-overlap`,
+  `log-city-parameters`, `check-doc-links`, `start-resume`, `start-new-map`. Piece-for-piece:
+  same endpoints, defaults, bodies (built with `jq -n`, so coordinates and `dryRun` are typed),
+  sleeps, and save names. Bash 3.2 compatible. Verified against a mock bridge only; nothing has
+  been run against the live game. The `.ps1` originals stay as legacy Windows tooling.
+  The two launchers replace the `user32.dll` mouse clicks with an operator prompt and poll
+  `/health` until `levelLoaded == true`; `CS1_NO_LAUNCH=1` skips the Steam `open` for testing.
+
 ## Fixed — v0.4 upgrade
 
 - [x] **Node reuse was 2m and O(all slots)** — `src/NodeHelper.cs`
@@ -85,17 +95,30 @@ deliberately out of scope, with enough context to pick up cold.
 - [ ] **Query pairs split on every `=`** — `src/ApiServer.cs`
   `pairs[i].Split('=')` yields more than 2 parts when a value contains `=`, and the pair is then
   ignored because the code requires `parts.Length == 2`. No current parameter takes an `=`.
-- [ ] **PowerShell launchers are unported and unportable** — `scripts/start-resume.ps1`,
-  `scripts/start-new-map.ps1`
-  Both drive the Paradox launcher with `user32.dll` P/Invoke and screen coordinates hardcoded for
-  one machine. `SKILL.md` now tells the operator to launch through Steam by hand. A macOS
-  equivalent needs AppleScript UI scripting plus Accessibility permission — decide whether that
-  is worth building.
-- [ ] **Remaining `.ps1` helpers unported** — `scripts/smoke-test.ps1`, `scripts/develop-*.ps1`,
-  `scripts/repair-*.ps1`, `scripts/inspect-road-anomalies.ps1`, `scripts/log-city-parameters.ps1`,
-  `scripts/check-doc-links.ps1`, `scripts/save-city.ps1`
-  These are API-only, so they port to bash + curl cleanly. `smoke-test.ps1` is the highest value:
-  it is the only end-to-end check of the API surface.
+- [ ] **`--dry-run` still unpauses the game and writes a real save** —
+  `scripts/develop-city-with-infrastructure.sh`, `scripts/repair-service-overlap.sh`
+  (inherited from the `.ps1` originals). `src/SimulationCommands.cs` reads only `paused`/`speed`
+  and `SaveCommands.Save` reads only `name`, so the `dryRun:true` the scripts now send is
+  ignored on those two endpoints. Impact: a "dry run" of either script sets speed 3 and creates
+  an `AgentAutoSave-*.crp`. Fix: honour `dryRun` in both handlers (return the would-be result
+  without acting), or skip the two calls under `--dry-run` in the scripts.
+- [ ] **Original `repair-road-anomalies.ps1` bbox test only checked the stub's start point** —
+  `scripts/repair-road-anomalies.ps1:32`. `(In-Box $item.start -or In-Box $item.end)` is parsed
+  in PowerShell command mode as one `In-Box` call with `$item.start` as the argument and the
+  rest as extra args, so a stub whose start is outside the box but end inside was never
+  bulldozed. Not verified by running PowerShell (none on this machine); rests on argument-mode
+  parsing. The bash port implements what the code says (start OR end), so it will remove a stub
+  that straddles the box edge where the original would not. Decide which behaviour is wanted.
+  The port also skips a null `ownSegmentId` where the original cast it to `0` and bulldozed
+  segment 0.
+- [ ] **`check-doc-links.sh` has never run on Linux** — `.github/workflows/docs.yml` now calls it
+  on `ubuntu-latest`. Written for BSD grep/sed and GNU both, but the first CI run is the first
+  Linux run. Existence checks are case-sensitive there; the old Windows run was not.
+- [ ] **Scripts require curl 7.76+ (`--fail-with-body`)** — every `scripts/*.sh` API helper. Fine on
+  macOS (8.7) and Ubuntu 22.04 (7.81); Ubuntu 20.04 (7.68) rejects the flag with exit 2. Found by
+  the Cursor review 2026-09-25. Fix if it matters: capture `-w '%{http_code}'` and branch.
+- [ ] **`save-city.sh` timeout edge** — like the original, no final existence check after the
+  last 3 s sleep, so a file that lands in the final interval still reports a timeout.
 - [ ] **`README.ja.md` and `docs/ja/**` still describe the Windows/PowerShell workflow.**
   The English README, SKILL.md, and docs/api.md were ported; the Japanese translations were not.
 - [ ] **No cost model.** The agent can bankrupt the city and will not see it coming.

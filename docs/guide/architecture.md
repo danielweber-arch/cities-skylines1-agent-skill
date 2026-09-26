@@ -1,12 +1,12 @@
 # Architecture
 
-The repository has two connected parts: a CS1 mod that exposes a local API and a Codex skill that teaches an agent how to use that API safely.
+The repository has two connected parts: a CS1 mod that exposes a local API and a Claude skill that teaches an agent how to use that API safely. `mcp-server/` wraps the API as typed `cs1_*` MCP tools that validate arguments and filter large state responses.
 
 ## Runtime Shape
 
 ```text
-Codex agent
-  -> PowerShell scripts
+Claude agent
+  -> cs1_* MCP tools / bash scripts / curl
   -> http://127.0.0.1:32123
   -> SkylinesAgentBridge mod
   -> CS1 game thread queue
@@ -43,4 +43,4 @@ and has a minimize button so it can stay available without covering the city.
 
 ## Skill Metadata
 
-`SKILL.md` contains the agent operating procedure. `agents/openai.yaml` provides the display name, default prompt, and implicit invocation setting for Codex skill surfaces.
+`SKILL.md` is the Claude skill and contains the agent operating procedure. `agents/openai.yaml` provides the display name, default prompt, and implicit invocation setting for Codex skill surfaces.

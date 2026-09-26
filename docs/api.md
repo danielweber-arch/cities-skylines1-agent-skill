@@ -236,8 +236,9 @@ curl -sS -X POST http://127.0.0.1:32123/commands/connect \
   -d '{"from":{"x":512,"z":-88},"toService":"Road","maxDistance":200}'
 ```
 
-The `.ps1` helpers under `scripts/` are the original Windows tooling and have not been
-ported; drive the endpoints directly, or use the `cs1_*` MCP tools.
+The bash scripts in `scripts/` wrap these endpoints (`inspect-road-anomalies.sh` prints
+repair hints, `repair-road-anomalies.sh` bulldozes stubs in a bounding box); the `.ps1` files
+are the legacy Windows originals.
 
 ## GET /state/external-connections
 

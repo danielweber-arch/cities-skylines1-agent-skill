@@ -17,7 +17,7 @@
 
 ## Validation
 
-- [ ] `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps1`
+- [ ] `./scripts/check-doc-links.sh`
 - [ ] `npm install` in `docs`
 - [ ] `npm run build` in `docs`
 - [ ] CS1/mod smoke test, if runtime behavior changed
