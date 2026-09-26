@@ -11,6 +11,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { BridgeClient } from "./client.js";
 import { registerStateTools } from "./tools/state.js";
 import { registerCommandTools } from "./tools/commands.js";
+import { registerTransitTools } from "./tools/transit.js";
+import { registerChatTools } from "./tools/chat.js";
 
 async function main() {
   const bridge = new BridgeClient();
@@ -31,6 +33,8 @@ async function main() {
 
   registerStateTools(server, bridge);
   registerCommandTools(server, bridge);
+  registerTransitTools(server, bridge);
+  registerChatTools(server, bridge);
 
   // stdout is the MCP transport — anything written there that is not a protocol message
   // corrupts the session, so diagnostics go to stderr.

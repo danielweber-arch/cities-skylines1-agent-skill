@@ -13,6 +13,8 @@
 /** ~2K tokens. A state tool should never exceed this without being asked to. */
 export const SUMMARY_CHAR_BUDGET = 8_000;
 export const FULL_CHAR_BUDGET = 400_000;
+/** Transit summaries list every line (one short string each), so they get twice the budget. */
+export const TRANSIT_SUMMARY_CHAR_BUDGET = 16_000;
 
 type Row = Record<string, unknown>;
 
@@ -212,6 +214,73 @@ export function summarizePrefabs(payload: unknown) {
     total: rows.length,
     names: rows.map((r) => String(r.name ?? r.displayName ?? "")).filter(Boolean),
     note: "Names only — these are what roadPrefab and buildingPrefab expect.",
+  };
+}
+
+/**
+ * Transit review summary: one compact row per line (the numbers an optimiser acts on), the
+ * per-type totals and city counters verbatim, and facilities collapsed to counts plus the
+ * ones that need attention. Stops are dropped; detail:"full" returns them when requested.
+ */
+export function summarizeTransit(payload: unknown) {
+  const record = (payload ?? {}) as Row;
+  const lines = Array.isArray(record.lines) ? (record.lines as Row[]) : [];
+  const facilities = Array.isArray(record.facilities) ? (record.facilities as Row[]) : [];
+  const brokenFacilities = facilities.filter((f) => hasProblem(f) || f.active === false);
+
+  return {
+    lineCount: record.lineCount ?? lines.length,
+    returned: lines.length,
+    passengerSource: record.passengerSource,
+    lineFormat: "#id Type 'name' stops=N veh=current/target budget=% pax=weekly(res+tour) len=m [flags/problems]",
+    lines: lines.map((l) => {
+      const passengers = (l.passengers ?? {}) as Row;
+      const problems = Array.isArray(l.problems) ? (l.problems as unknown[]).map(String) : [];
+      const tags = [...(l.complete === false ? ["INCOMPLETE"] : []), ...problems];
+      return (
+        `#${l.id} ${l.transportType} '${l.name}' stops=${l.stopCount} ` +
+        `veh=${l.vehicleCount}/${l.targetVehicleCount} budget=${l.budget} ` +
+        `pax=${passengers.total}(${passengers.residents}+${passengers.tourists}) ` +
+        `len=${Math.round(Number(l.lengthMeters) || 0)}` +
+        (tags.length > 0 ? ` [${tags.join(", ")}]` : "")
+      );
+    }),
+    totalsByType: record.totalsByType,
+    cityPassengersByType: record.cityPassengersByType,
+    budgets: record.budgets,
+    facilityCount: record.facilityCount ?? facilities.length,
+    facilitiesBySubService: record.facilitiesBySubService ?? countBy(facilities, "subService"),
+    facilitiesNeedingAttentionCount: brokenFacilities.length,
+    facilitiesNeedingAttention: brokenFacilities
+      .slice(0, 30)
+      .map((f) => pick(f, ["id", "prefab", "subService", "active", "problems", "position"])),
+    note:
+      "Per-line summary; stops, prefabs and healthy facilities omitted. Pass detail:'full' " +
+      "(with includeStops:true for per-stop waiting passengers) for everything.",
+  };
+}
+
+/** Top congested segments with only the fields needed to find and fix them. */
+export function summarizeTraffic(payload: unknown) {
+  const record = (payload ?? {}) as Row;
+  const rows = rowsOf(payload, "segments");
+  return {
+    roadSegments: record.roadSegments,
+    matching: record.matching,
+    returned: rows.length,
+    averageDensity: record.averageDensity,
+    lengthWeightedAverageDensity: record.lengthWeightedAverageDensity,
+    densityHistogram: record.densityHistogram,
+    trafficFlowPercent: record.trafficFlowPercent,
+    segments: rows.map((r) => {
+      const lanes = (r.lanes ?? {}) as Row;
+      return {
+        ...pick(r, ["id", "prefab", "name", "density", "lengthMeters", "middle"]),
+        carLanes: lanes.carLanes,
+        busLanes: lanes.busLanes,
+      };
+    }),
+    note: "Sorted by density (0..100) descending. Pass detail:'full' for start/end points and full lane data.",
   };
 }
 

@@ -185,9 +185,16 @@ namespace SkylinesAgentBridge
 
         private HttpResponse Route(HttpRequest request)
         {
-            if (request.Method == "OPTIONS")
+            if (request.HasOrigin || request.Method == "OPTIONS")
             {
-                return HttpResponse.Json(200, "{\"ok\":true}");
+                return HttpResponse.Json(403, "{\"ok\":false,\"error\":\"Browser-origin requests are refused. Use curl, the MCP server, or the repo scripts.\"}");
+            }
+
+            int chatStatus;
+            string chatJson;
+            if (ChatRoutes.TryHandle(request.Method, request.Path, request.Query, request.Body, out chatStatus, out chatJson))
+            {
+                return HttpResponse.Json(chatStatus, chatJson);
             }
 
             if (request.Method == "GET" && request.Path == "/health")
@@ -195,7 +202,7 @@ namespace SkylinesAgentBridge
                 return HttpResponse.Json(200, "{\"ok\":true,\"mod\":\"Skylines Agent Bridge\"" +
                     ",\"levelLoaded\":" + JsonUtil.Bool(bridge.LevelLoaded) +
                     ",\"port\":" + port +
-                    ",\"capabilities\":[\"composite-commands\",\"capture\",\"node-snapping\",\"idempotent-ops\"]" +
+                    ",\"capabilities\":[\"composite-commands\",\"capture\",\"node-snapping\",\"idempotent-ops\",\"transit\",\"chat\"]" +
                     ",\"defaultSpacing\":" + JsonUtil.Number(CompositeCommands.DefaultSpacing) +
                     ",\"snapDistance\":" + JsonUtil.Number(NodeHelper.DefaultSnapDistance) + "}");
             }
@@ -401,6 +408,60 @@ namespace SkylinesAgentBridge
                 return RunOnGameThread(request, delegate { return SaveCommands.Save(body); });
             }
 
+            if (request.Method == "GET" && request.Path == "/state/transit")
+            {
+                string type = request.GetQueryString("type", "");
+                bool includeStops = request.GetQueryString("includeStops", "false") == "true";
+                int limit = request.GetQueryInt("limit", 256);
+                return RunOnGameThread(request, delegate { return TransitState.BuildTransitJson(type, includeStops, limit); });
+            }
+
+            if (request.Method == "GET" && request.Path == "/state/traffic")
+            {
+                int limit = request.GetQueryInt("limit", 50);
+                int minDensity = request.GetQueryInt("minDensity", 0);
+                float x = request.GetQueryFloat("x", float.NaN);
+                float z = request.GetQueryFloat("z", float.NaN);
+                float radius = request.GetQueryFloat("radius", 500f);
+                bool hasArea = !float.IsNaN(x) && !float.IsNaN(z);
+                return RunOnGameThread(request, delegate { return TrafficState.BuildTrafficJson(limit, minDensity, hasArea, x, z, radius); });
+            }
+
+            if (request.Method == "GET" && request.Path == "/state/policies")
+            {
+                return RunOnGameThread(request, TransitState.BuildPoliciesJson);
+            }
+
+            if (request.Method == "POST" && request.Path == "/commands/transit-line-create")
+            {
+                string body = request.Body;
+                return RunOnGameThread(request, delegate { return TransitCommands.CreateLine(body); }, CompositeTimeoutMs);
+            }
+
+            if (request.Method == "POST" && request.Path == "/commands/transit-line-edit")
+            {
+                string body = request.Body;
+                return RunOnGameThread(request, delegate { return TransitCommands.EditLine(body); }, CompositeTimeoutMs);
+            }
+
+            if (request.Method == "POST" && request.Path == "/commands/transit-line-delete")
+            {
+                string body = request.Body;
+                return RunOnGameThread(request, delegate { return TransitCommands.DeleteLine(body); });
+            }
+
+            if (request.Method == "POST" && request.Path == "/commands/set-service-budget")
+            {
+                string body = request.Body;
+                return RunOnGameThread(request, delegate { return TransitCommands.SetServiceBudget(body); });
+            }
+
+            if (request.Method == "POST" && request.Path == "/commands/set-policy")
+            {
+                string body = request.Body;
+                return RunOnGameThread(request, delegate { return TransitCommands.SetPolicy(body); });
+            }
+
             if (request.Method == "POST" && request.Path == "/commands/batch")
             {
                 string body = request.Body;
@@ -522,6 +583,9 @@ namespace SkylinesAgentBridge
                 if (request.Path == "/prefabs/roads") return "List road prefabs";
                 if (request.Path == "/prefabs/networks") return "List network prefabs";
                 if (request.Path == "/prefabs/buildings") return "List building prefabs";
+                if (request.Path == "/state/transit") return "Read public transport";
+                if (request.Path == "/state/traffic") return "Read traffic congestion";
+                if (request.Path == "/state/policies") return "Read policies";
                 if (request.Path == "/capture") return "Capture top-down render";
                 return "GET " + request.Path;
             }
@@ -608,6 +672,34 @@ namespace SkylinesAgentBridge
                 return "Set tax rate " + ((int)JsonUtil.GetNumber(body, "rate", 0f)).ToString();
             }
 
+            if (request.Path == "/commands/transit-line-create")
+            {
+                string type = JsonUtil.GetString(body, "transportType", "");
+                if (type.Length == 0) type = JsonUtil.GetString(body, "prefab", "transit");
+                return (JsonUtil.GetBool(body, "dryRun", false) ? "Check " : "Create ") + type + " line";
+            }
+
+            if (request.Path == "/commands/transit-line-edit")
+            {
+                return "Edit transit line #" + ((int)JsonUtil.GetNumber(body, "lineId", 0f)).ToString();
+            }
+
+            if (request.Path == "/commands/transit-line-delete")
+            {
+                return "Delete transit line #" + ((int)JsonUtil.GetNumber(body, "lineId", 0f)).ToString();
+            }
+
+            if (request.Path == "/commands/set-service-budget")
+            {
+                string subService = JsonUtil.GetString(body, "subService", "");
+                return "Set budget " + JsonUtil.GetString(body, "service", "") + (subService.Length > 0 ? " " + subService : "");
+            }
+
+            if (request.Path == "/commands/set-policy")
+            {
+                return (JsonUtil.GetBool(body, "enabled", true) ? "Enable policy " : "Disable policy ") + JsonUtil.GetString(body, "policy", "");
+            }
+
             if (request.Path == "/commands/batch")
             {
                 return "Run batch commands";
@@ -620,6 +712,7 @@ namespace SkylinesAgentBridge
 
         private sealed class HttpRequest
         {
+            public bool HasOrigin;
             public string Method;
             public string Path;
             public string Query;
@@ -739,11 +832,18 @@ namespace SkylinesAgentBridge
                 string[] lines = headers.Split(new string[] { "\r\n" }, StringSplitOptions.None);
                 string[] first = lines[0].Split(' ');
                 int contentLength = 0;
+                bool hasOrigin = false;
 
                 for (int i = 1; i < lines.Length; i++)
                 {
                     string line = lines[i];
                     int colon = line.IndexOf(':');
+                    // Browsers attach Origin to cross-site requests; curl, the MCP server and
+                    // the repo scripts never do. Refusing it keeps web pages from driving the city.
+                    if (colon > 0 && string.Compare(line.Substring(0, colon), "Origin", StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        hasOrigin = true;
+                    }
                     // Ordinal: header names are wire-protocol tokens, so they should never be
                     // matched through whatever culture Mono inherited from the OS locale.
                     if (colon > 0 && string.Compare(line.Substring(0, colon), "Content-Length", StringComparison.OrdinalIgnoreCase) == 0)
@@ -785,6 +885,7 @@ namespace SkylinesAgentBridge
                 }
 
                 HttpRequest request = new HttpRequest();
+                request.HasOrigin = hasOrigin;
                 request.Method = first.Length > 0 ? first[0].ToUpperInvariant() : "";
                 string target = first.Length > 1 ? first[1] : "/";
                 int queryIndex = target.IndexOf('?');
@@ -845,10 +946,6 @@ namespace SkylinesAgentBridge
                 header.Append("HTTP/1.1 ").Append(status).Append(" ").Append(Reason(status)).Append("\r\n");
                 header.Append("Content-Type: ").Append(contentType).Append("\r\n");
                 header.Append("Content-Length: ").Append(body.Length).Append("\r\n");
-                header.Append("Access-Control-Allow-Origin: *\r\n");
-                header.Append("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n");
-                header.Append("Access-Control-Allow-Headers: Content-Type\r\n");
-                header.Append("Access-Control-Expose-Headers: X-Bridge-Info-Mode, X-Bridge-Distinct-Colors\r\n");
 
                 for (int i = 0; i < extraHeaders.Count; i++)
                 {
