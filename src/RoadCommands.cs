@@ -27,13 +27,19 @@ namespace SkylinesAgentBridge
                 return CommandResult.Fail("Road is too short.");
             }
 
+            // Optional per-point "elevation": metres above the terrain (negative = below it).
+            // Elevated track and roads need it; without it every node sits on the ground.
+            float startElevation = JsonUtil.GetPointNumber(body, "start", "elevation", 0f);
+            float endElevation = JsonUtil.GetPointNumber(body, "end", "elevation", 0f);
+
             TerrainManager terrain = TerrainManager.instance;
-            start.y = terrain.SampleRawHeightSmoothWithWater(start, false, 0f);
-            end.y = terrain.SampleRawHeightSmoothWithWater(end, false, 0f);
+            start.y = terrain.SampleRawHeightSmoothWithWater(start, false, 0f) + startElevation;
+            end.y = terrain.SampleRawHeightSmoothWithWater(end, false, 0f) + endElevation;
 
             if (dryRun)
             {
-                return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Build-road validation passed.\",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"}");
+                return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Build-road validation passed.\",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"" +
+                    ",\"startY\":" + JsonUtil.Number(start.y) + ",\"endY\":" + JsonUtil.Number(end.y) + "}");
             }
 
             // Node reuse now goes through NodeHelper, which snaps at 8m instead of the old 2m
@@ -50,14 +56,14 @@ namespace SkylinesAgentBridge
             try
             {
                 bool createdStart;
-                ushort startNode = NodeHelper.FindOrCreateNode(start, info, snapDistance, out createdStart);
+                ushort startNode = NodeHelper.FindOrCreateNode(start, info, snapDistance, startElevation, out createdStart);
                 if (createdStart)
                 {
                     createdNodes.Add(startNode);
                 }
 
                 bool createdEnd;
-                ushort endNode = NodeHelper.FindOrCreateNode(end, info, snapDistance, out createdEnd);
+                ushort endNode = NodeHelper.FindOrCreateNode(end, info, snapDistance, endElevation, out createdEnd);
                 if (createdEnd)
                 {
                     createdNodes.Add(endNode);

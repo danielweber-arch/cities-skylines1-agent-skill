@@ -313,6 +313,12 @@ Response:
 
 When `dryRun` is `false`, the mod creates two nodes and one segment with `NetManager`.
 
+Each point may carry an optional `elevation` in metres above the terrain (negative puts it below
+the terrain), for example `"start": {"x": 0, "z": 0, "elevation": 12}`. Use it with elevated or
+tunnel prefabs such as `Train Track Elevated`. New nodes store the height in `NetNode.m_elevation`.
+Snapping onto an existing node ignores height, and no pillars are placed. `dryRun` reports the
+resulting `startY` and `endY`.
+
 ## POST /commands/build-road
 
 Compatibility alias for `/commands/build-network`.

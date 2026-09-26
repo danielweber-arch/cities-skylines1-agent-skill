@@ -115,6 +115,16 @@ namespace SkylinesAgentBridge
         /// </summary>
         public static ushort FindOrCreateNode(Vector3 position, NetInfo prefab, float snapDistance, out bool created)
         {
+            return FindOrCreateNode(position, prefab, snapDistance, 0f, out created);
+        }
+
+        /// <summary>
+        /// As above, but a new node is placed <paramref name="elevation"/> metres above the
+        /// terrain (below it when negative) and records that height in NetNode.m_elevation,
+        /// the way NetTool does for elevated and tunnel pieces. Snapping ignores height.
+        /// </summary>
+        public static ushort FindOrCreateNode(Vector3 position, NetInfo prefab, float snapDistance, float elevation, out bool created)
+        {
             created = false;
 
             if (prefab == null)
@@ -132,7 +142,7 @@ namespace SkylinesAgentBridge
             if (terrain != null)
             {
                 // Match RoadCommands.BuildRoad so nodes from both paths sit at the same height.
-                position.y = terrain.SampleRawHeightSmoothWithWater(position, false, 0f);
+                position.y = terrain.SampleRawHeightSmoothWithWater(position, false, 0f) + elevation;
             }
 
             SimulationManager simulation = Singleton<SimulationManager>.instance;
@@ -148,6 +158,11 @@ namespace SkylinesAgentBridge
                 throw new BridgeException("CreateNode failed at " +
                     JsonUtil.Number(position.x) + "," + JsonUtil.Number(position.z) +
                     " — the net node pool is most likely exhausted.");
+            }
+
+            if (elevation != 0f)
+            {
+                net.m_nodes.m_buffer[node].m_elevation = (byte)Mathf.Clamp(Mathf.RoundToInt(Mathf.Abs(elevation)), 1, 255);
             }
 
             simulation.m_currentBuildIndex += 1u;
