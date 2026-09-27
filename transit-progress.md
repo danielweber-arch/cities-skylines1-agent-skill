@@ -127,3 +127,40 @@ batches:
   - Ferry 224: 0 riders at every read from 2035-12-25 to 2036-04-05 (14 weeks), 3 ships. Harbor 42184 passengerCount 0-5. Not deleted (player's call).
   - Coverage: growables with no stop within 400 m 157 -> 29 (same growable snapshot).
   - Saved TAmpa b2: requested 21:43:25, mtime 21:43:29 (after round 1); requested 22:02:48, mtime 22:02:53 (final).
+- B20 traffic (2026-09-26 22:08-22:5x local; game 2036-04-25 -> 2036-06-19; scripts and snapshots in tmp/tampa/b20/: sampler.py, samples.jsonl (37 samples of /state/traffic + bus lines), traffic0.json, roads0.json, nets0.json, fac0.json, grow0.json, transit0.json, g.py, map.py, model.py, linepaths.py, lineuse.json, face.py, feas.py/feas.txt, search.py, hotsearch.py/hotsearch.txt). NO road change made; nothing created or removed.
+  - How density works (decompiled RoadBaseAI/CarAI): density = trafficBuffer*100 / (vehicle-lane length*16), capped at 100, and it moves at most 5 per segment step (every 256 frames). A car adds about 14 per 16-frame step, so a segment reads 100 when about (lane length / 14) cars are on it on average. For the 18 m S stub 28066 (2 lanes) that is about 3 cars. For Laurel 26028 (6 lanes, 56 m) it is about 24.
+  - Densities (mean over 37 samples, min-max):
+    - Laurel/S (node 11365): Laurel south 26028 88 (66-100), Laurel north 28058 76, Evans 17250 82, Evans 30352 77, Evans 3812 68, S stub 28066 99.
+    - Laurel/SE: SE stub 2742 99, Laurel 31824 40 (B18 read 98), 17654 19.
+    - Spine (node 23540): Merge B 752 100 (100-100), Empire 35364 99, Merge A 22179 90, Young 35828 25, Spine 1 5514 53, Richardson 35681 44.
+    - Richardson (junctions 28504 and 14343, 49 m apart): 34930 98, 4971 100, 427 90, 18873 82, 7404 62, 14977 87, 17940 77, Robert 7372 86, Graham 11675 77.
+    - Stephen St 8278 94 (its continuation 25649 read 0 in every sample; Crowley west branch 10991 averaged 4).
+  - trafficFlowPercent 58-69, mean 62.8 (63 at the first read). No change was made, so there is no after value.
+  - Riders (m_finalCount per weekly period, 2036-04-25 -> 06-05; no change was made):
+    - Line 4: 332, 311, 394, 397, 221, 299, 246.
+    - Line 13: 269, 193, 338, 235, 253, 363, 247 (m_averageCount 263 vs 174 at the end of B18).
+    - Line 94: 607, 521, 673, 620, 552, 540, 597.
+    - Line 203: 224, 314, 209, 182, 142, 155, 203.
+  - Diagnosis:
+    - Laurel/S: the two station stubs reading 100 is what about 3 cars present on average produce. It does not show that the stubs funnel traffic. The hot spot is node 11365, where Laurel north, Laurel south and Evans meet, plus the stub. Density on Laurel rises toward the node (26028 88 vs 30-57 further south). Line 13 has stops on 28058, 20-50 m from the node. Line 13 recovered with no change, so its B18 drop was inside the week-to-week spread. The SE junction 11757 is no longer hot.
+    - Spine: Young Ave is light, yet Merge A still reads 90, so the limit is node 23540: four legs, with two 4-lane merges fed by 6-lane roads.
+    - Richardson: two T-junctions 49 m apart, with queues about 350 m north and 100 m south.
+    - Stephen St: a 2-lane shortcut carrying traffic between two 4-lane roads.
+  - Why nothing was built. Every segment averaging >= 75 fails at least one hard rule (feas.txt):
+    - It is on a bus line path. Paths were estimated by shortest path between stops, because the bridge does not expose them.
+    - Growables front it. A bulldoze and rebuild releases the zone blocks (NetManager.ReleaseSegment -> ReleaseSegmentBlock), and the buildings are then flagged Demolishing (PrivateBuildingAI CheckZoning), which is a zoning change. Fronting, found by building angle: 752 -> 22613 and 16325; 22179 -> 17881; 7372 -> 8010, 22981; 11675 -> 168, 21250; 8278 -> 23442, 24792; 35364 -> 858, 3392, 10978, 21082.
+    - It is within 60 m of a station: node 11365, both stubs and 26028 at 57 m.
+    - The Richardson segments that are only on line paths are already 6-lane, so there is no bigger prefab to upgrade to.
+  - The link search (straight links between existing nodes within 500 m of each hot spot, clear of stations + 60 m, ground roads and track, buildings and existing roads) found no candidate. East of Laurel a ground train track runs about 40 m away.
+  - Consult: one voice ran (Cursor gpt-5.6-sol-high), blind and refute-only; grok was not run (no money, security or irreversible change). It found:
+    - None of the claims is fully established: line paths are estimated, the fronting test is a heuristic, and density is not a queue measurement.
+    - The link search did not cover curved or multi-leg routes.
+    - The station-access permission and the 60 m rule conflict.
+    - Resolution: the Richardson segments blocked only by estimated paths have no larger prefab anyway, and inserting a node on an existing segment replaces that segment, so it hits the same rules.
+  - Open, for the player (TODOS.md), each best done with the in-game Upgrade tool, which keeps zoning:
+    - Merge B 752 to 6 lanes.
+    - Graham Blvd realigned into 28504.
+    - Stephen 8278 to Medium Road.
+    - Bus lanes on Laurel 28058/26028.
+    - Any work at S/SE needs the 60 m rule lifted.
+  - Save: not taken; nothing changed in this round.
