@@ -75,7 +75,31 @@ namespace SkylinesAgentBridge
 
                 if (!dryRun)
                 {
-                    GameThreadHelpers.ReleaseSegment(manager, id, keepNodes);
+                    // Same reason as buildings: releasing on the main thread threw part-way
+                    // (IndexOutOfRange via the reflection fallback on segment 30352). Release on the
+                    // simulation thread, as NetTool does, and report whether the slot was freed.
+                    ushort segmentId = id;
+                    bool keep = keepNodes;
+                    SimulationJob job = null;
+                    job = new SimulationJob(delegate
+                    {
+                        if (!job.BeginCommit())
+                        {
+                            return CommandResult.Fail("Timed out before the segment was released.");
+                        }
+                        NetSegment.Flags before = manager.m_segments.m_buffer[segmentId].m_flags;
+                        manager.ReleaseSegment(segmentId, keep);
+                        NetSegment.Flags after = manager.m_segments.m_buffer[segmentId].m_flags;
+                        return CommandResult.FromJson("{\"ok\":true,\"dryRun\":false,\"entityType\":\"netSegment\",\"id\":" + segmentId +
+                            ",\"keepNodes\":" + JsonUtil.Bool(keep) +
+                            ",\"flagsBefore\":\"" + JsonUtil.Escape(before.ToString()) + "\"" +
+                            ",\"flagsAfter\":\"" + JsonUtil.Escape(after.ToString()) + "\"" +
+                            ",\"released\":" + JsonUtil.Bool(after == NetSegment.Flags.None) + "}");
+                    });
+                    Singleton<SimulationManager>.instance.AddAction(job.Run);
+                    CommandResult deferred = CommandResult.FromJson("{\"ok\":true,\"queued\":true}");
+                    deferred.Deferred = job;
+                    return deferred;
                 }
 
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":" + JsonUtil.Bool(dryRun) + ",\"entityType\":\"netSegment\",\"id\":" + id + ",\"keepNodes\":" + JsonUtil.Bool(keepNodes) + "}");
@@ -91,7 +115,23 @@ namespace SkylinesAgentBridge
 
                 if (!dryRun)
                 {
-                    manager.ReleaseNode(id);
+                    ushort nodeId = id;
+                    SimulationJob job = null;
+                    job = new SimulationJob(delegate
+                    {
+                        if (!job.BeginCommit())
+                        {
+                            return CommandResult.Fail("Timed out before the node was released.");
+                        }
+                        manager.ReleaseNode(nodeId);
+                        NetNode.Flags after = manager.m_nodes.m_buffer[nodeId].m_flags;
+                        return CommandResult.FromJson("{\"ok\":true,\"dryRun\":false,\"entityType\":\"netNode\",\"id\":" + nodeId +
+                            ",\"released\":" + JsonUtil.Bool(after == NetNode.Flags.None) + "}");
+                    });
+                    Singleton<SimulationManager>.instance.AddAction(job.Run);
+                    CommandResult deferred = CommandResult.FromJson("{\"ok\":true,\"queued\":true}");
+                    deferred.Deferred = job;
+                    return deferred;
                 }
 
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":" + JsonUtil.Bool(dryRun) + ",\"entityType\":\"netNode\",\"id\":" + id + "}");
