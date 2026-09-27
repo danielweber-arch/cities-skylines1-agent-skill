@@ -364,7 +364,7 @@ namespace SkylinesAgentBridge
             if (request.Method == "POST" && request.Path == "/commands/place-building")
             {
                 string body = request.Body;
-                return RunOnGameThread(request, delegate { return BuildingCommands.PlaceBuilding(body); });
+                return RunWithSimulationStep(request, delegate { return BuildingCommands.PlaceBuilding(body); });
             }
 
             if (request.Method == "POST" && request.Path == "/commands/move-building")
@@ -558,6 +558,54 @@ namespace SkylinesAgentBridge
             }, timeoutMs);
 
             return HttpResponse.Json(result.Ok ? 200 : 500, result.Json);
+        }
+
+        /// <summary>
+        /// Like RunOnGameThread, but the command may hand back simulation-thread work in
+        /// CommandResult.Deferred (queued with SimulationManager.AddAction). That work is awaited
+        /// here, on the HTTP thread, so neither the main thread nor the simulation thread blocks
+        /// on the other. The in-game notification reports the final result.
+        /// </summary>
+        private HttpResponse RunWithSimulationStep(HttpRequest request, Func<CommandResult> action)
+        {
+            if (!bridge.LevelLoaded)
+            {
+                return HttpResponse.Json(409, "{\"ok\":false,\"error\":\"No city is loaded.\"}");
+            }
+
+            CommandResult first = bridge.Queue.RunSync(delegate
+            {
+                try
+                {
+                    return action();
+                }
+                catch (Exception ex)
+                {
+                    return CommandResult.Fail(ex.GetType().Name + ": " + ex.Message);
+                }
+            }, DefaultTimeoutMs);
+
+            CommandResult result = first;
+            if (first.Ok && first.Deferred != null)
+            {
+                result = first.Deferred.Await(DefaultTimeoutMs);
+            }
+
+            CommandResult final = result;
+            bridge.Queue.RunSync(delegate
+            {
+                try
+                {
+                    AgentBridgeNotifier.Notify((final.Ok ? "API OK: " : "API FAIL: ") + DescribeRequest(request));
+                }
+                catch (Exception ex)
+                {
+                    BridgeLog.Queue("[SkylinesAgentBridge] Notifier failed: " + ex.Message);
+                }
+                return final;
+            }, DefaultTimeoutMs);
+
+            return HttpResponse.Json(final.Ok ? 200 : 500, final.Json);
         }
 
         private static string DescribeRequest(HttpRequest request)
