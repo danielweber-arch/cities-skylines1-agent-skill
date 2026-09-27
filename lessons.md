@@ -149,3 +149,25 @@
 - **Result:** ReleaseBuildingImplementation sets Deleted first, then BuildingAI.ReleaseBuilding dispatches a UI event → "Already in the same thread" → everything after it (units, paths, vehicles, grid, ReleaseItem) never ran. The implementation returns at once for Deleted buildings, so the fallback could not finish it. Stuck 24712 made the game keep spawning replacement houses on its lot (227 stacked, 117 Pollution + 34 Death + 38 Abandoned entries from one lot).
 - **Fix:** bulldoze of buildings now runs on the simulation thread through SimulationJob and awaits the result (flagsBefore/flagsAfter/released); stuck-Deleted buildings are recovered by clearing Deleted and running the full release. 24712, 1621, 5177 all released (flagsAfter None).
 - **Rule:** Every game mutation that can fire events runs on the simulation thread (SimulationJob/AddAction). A problem count that jumps by 100+ at one coordinate is a stuck object, not a city-wide issue.
+
+### 2026-09-26 B18 new lines need the period count, not the weekly average, at 3 weeks
+- **Situation:** measuring two new feeder lines 3 game weeks after creation.
+- **Action:** logged m_averageCount, m_finalCount (lastPeriod) and m_tempCount every 30 s (tmp/tampa/b18/samples.jsonl).
+- **Result:** each line's period rolls about every 7-8 game days, staggered by line. After 3 weeks line 11 showed an average of 5-16 while its periods were 49, 64, 96; the average reached 80 only after about 12 weeks. Rail line periods swing 49-485 week to week with no change made (90: 485, 250, 291, 183, 70).
+- **Rule:** judge a new or edited line by its last 3-4 periods, not by m_averageCount, and compare against the spread of periods before the change. A mode total that moves less than its pre-change swing is not a result.
+
+### 2026-09-26 B18 a bus line that duplicates a metro pair takes metro riders
+- **Situation:** line 60 redesigned to run Core2/Richardson -> NO metro -> west industry, parallel to Metro Blue between TM/C2 and NO.
+- **Result:** 60 carried 36-158 per period while Blue (135+207) fell from about 500 to 211-326 per period. Removing the two Blue-parallel stops brought Blue back to 350-456 within 4-7 weeks, and 60 fell to 15-66. Adding back only the Core2 stop made 60 a 4.7 km loop and lowered it further.
+- **Rule:** a feeder must start at the trunk station, not run beside the trunk. A feeder into an area within 1 km walk of the station (NO -> industry is about 650 m) gets few riders, because walking wins. Check the walk from the station to the target before building a feeder.
+
+### 2026-09-26 B18 more buses on a line with 1,000+ waiting did not add riders
+- **Situation:** lines 4, 13, 142, 203 had 1,100-2,600 waiting.
+- **Action:** line budgets 100 -> 150 (+40-50% buses) for 3 game weeks.
+- **Result:** riders 263 -> 263, 246 -> 230, 188 -> 191, 277 -> 262; waiting on 13 fell 1,398 -> 674. Reverted. The corridor of 13 and 203 (Laurel Blvd) had segments at density 95-100, including the S and SE station access roads.
+- **Rule:** waiting passengers alone do not mean too few buses. Read /state/traffic on the line's corridor first; a jammed line needs a road fix, not more buses.
+
+### 2026-09-26 B18 a ferry between two harbors 323 m apart carries nobody
+- **Situation:** Bay Ferry 224 between Harbor 23322 and Harbor 42184, plus a bus stop moved to 42184's front (line 203 on Cook St 10561).
+- **Result:** 0 riders at every read over 14 game weeks; the Cook St stop had 0 waiting at every read.
+- **Rule:** a ferry only gets riders where the water route is much shorter than any land route and both ends are near homes or jobs. Check the walking distance between the two docks before building a ferry line.
