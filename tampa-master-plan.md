@@ -175,6 +175,157 @@ name below is in `/prefabs/buildings` [M].
 
 Acceptance for services is problem-based (§5): the counts above are budgets, not targets.
 
+## 3b. Education pillar: a very highly educated city
+
+**What can be measured** [M]:
+- The bridge does not expose the education mix (uneducated / educated / well educated / highly educated),
+  the age mix, or the education budget. `/state/transit` shows budgets for transit only. These are bridge
+  gaps: `DistrictManager` `m_educated0..3Data` and `m_child/teen/young/adult/seniorData`, and the
+  Education `set-service-budget` value.
+- The EducationBoost city policy is **on** (`/state/policies`). RecreationBoost, FreeTransport and
+  BigBusiness are also on, and so are the low-density residential and low-density commercial tax cuts.
+- School coverage of the 1,997 residential growables (straight line ≤ 500 m, the code's default
+  `SchoolAI.m_educationRadius` = 500; the prefab values were not read):
+
+| Prefab (verified in `/prefabs/buildings`) | Built | Homes within 500 m |
+|---|---|---|
+| `Elementary School` | 13 | 81.6% |
+| `High School` | 8 | 66.9% |
+| `University` | 7 | 59.9% |
+| `Library 01` | 16 | 85.5% |
+
+`Research Library 01` 1 and `Hadron Collider` 0 are also loaded.
+
+**How citizens get educated** [M, decompiled `ResidentAI`]:
+- Children (age < 15) seek elementary school, teens (15–44) high school, and young adults and adults
+  (45–179) without a degree seek university (`Student1/2/3`).
+- Separately, every simulation step a resident standing in education coverage whose local value is above
+  1,000 can gain the level for free. The chance is (local − 1,000)/9,000 for elementary and high school,
+  so **coverage educates as well as seats do**.
+- **EducationBoost:** an unemployed young adult or adult who still lacks university keeps seeking
+  university on 3 of every 5 ages instead of dropping out of the search.
+- Move-ins bring their education with them. Only the two adults carry it; children arrive uneducated.
+
+**Estimated mix today** [E]: with 82% elementary and 67% high-school coverage, most adults are
+"educated" or better. The gap to "highly educated" is university coverage: 60% of homes lie inside a
+university radius, and the rest depend on a seat. Target at 100k: every home inside all three radii.
+
+**Seats against demand by phase** [E]:
+- Student shares assumed: elementary 10% of population, high school 12%, university 12%.
+- Seat capacities are vanilla wiki values, **not read**: elementary 300, high school 1,000, university 4,500.
+- This table supersedes the Education row of §3, which scaled building counts instead.
+
+| Population | Elementary: need / seats | High: need / seats | University: need / seats | Build in the phase |
+|---|---|---|---|---|
+| 41.8k now | 4.2k / 3.9k (13) | 5.0k / 8.0k (8) | 5.0k / 31.5k (7) | — |
+| 55k (P1) | 5.5k / 5.7k | 6.6k / 8.0k | 6.6k / 31.5k | +6 Elementary, +2 Library 01 (NW1, HS) |
+| 70k (P2) | 7.0k / 7.2k | 8.4k / 9.0k | 8.4k / 31.5k | +5 Elementary, +1 High School (W1-E) |
+| 85k (P3) | 8.5k / 8.7k | 10.2k / 11.0k | 10.2k / 36.0k | +5 Elementary, +2 High School, +1 University (W1-C) |
+| 100k (P4) | 10.0k / 10.2k | 12.0k / 12.0k | 12.0k / 36.0k | +5 Elementary, +1 High School (C1-R) |
+
+Universities stay far above seat demand. Coverage, not seats, is why W1 still gets one.
+Libraries: one `Library 01` per new district, placed at its station.
+
+**Put schools on the trunk so students ride** [M distances to the nearest rail/metro stop today]:
+- Universities 24099 (73 m), 30255 (82 m), 47155 (145 m), 33107 (166 m), 41670 (215 m), 13163 (400 m)
+  and 15458 (415 m) are already on the trunk.
+- High schools 26576 (37 m), 9285 (194 m), 33842 (214 m), 39883 (220 m), 16162 (309 m) and 12055 (345 m)
+  are too. 30051 (588 m) and 288 (639 m) are not.
+- New rule: every new `High School` and `University` goes within 250 m of a rail or metro platform:
+  - W1-E: High School.
+  - W1-C: University and Library 01.
+  - NW-R and 1005: NW1 High School near 1005, north side.
+  - C1-R: High School.
+- Elementary schools stay inside the housing (children walk), within 500 m of every family block.
+
+**Budget:** keep Education at 100% or above. It cannot be read or set through the bridge today, so the
+player confirms it in the budget panel at each phase gate.
+
+## 3c. Youth pillar: a young city
+
+**Mechanics** [M code]:
+- Every move-in household is two adults aged 90–104 (the start of the "adult" band) plus children aged
+  0–14 (`OutsideConnectionAI`).
+- Citizens then age through child < 15, teen < 45, young < 90, adult < 180, then senior.
+- So the city stays young only while **new homes keep opening**. When growth stops, the cohort ages
+  together and dies together (death waves, knowledge.md).
+- The age mix is not readable through the bridge (gap), so youth is steered by supply, as follows:
+  1. **Continuous, staged housing.** Zone residential in ≤ 50-cell chunks every two game weeks through all
+     four phases, never in one burst. This keeps a steady inflow of young families and staggers the deaths.
+  2. **Family housing next to schools, parks and transit.** In every new district, each RH and RL block
+     lies within 500 m of an Elementary School, 400 m of a park or playground, and 400 m of a stop.
+     Offices and commercial take the highway and runway edges.
+  3. **Level-ups keep families.** Education and parks raise land value. Once a building levels up it has
+     more homes, and those fill with new movers.
+
+**Per-district school coverage plan** [E]:
+
+| District | Elementary School | High School | Parks / youth leisure |
+|---|---|---|---|
+| NW1 | 3 (one per ~2 grids) | 1 near 1005 | 4 |
+| W1 | 9 across the three station areas | 2 (W1-E, W1-W) + University at W1-C | 10 |
+| C1 | 3 | 1 at C1-R | 3 |
+| N1 (mixed west part) | 2 | uses 12055 (345 m from rail) | 2 |
+| E1 / SW1 (reserve) | 2 / 3 | 1 / 1 | 2 / 3 |
+
+**Youth leisure prefabs loaded** [M in `/prefabs/buildings`]: `Regular Playground`, `Expensive Playground`,
+`Basketball Court`, `bouncer_castle`, `MerryGoRound`, `dog-park-fence`, `Regular Park`, `Expensive Park`,
+`Regular Plaza`, `JapaneseGarden`, and `Stadium` (already built: 6007).
+- The bridge cannot read unlock state (TODOS B22), and `place-building` ignores unlocks. The player
+  confirms each one is unlocked before it is placed.
+- RecreationBoost is already on.
+
+## 3d. Tourism pillar
+
+**What no longer moves tourists** [M, B22/B25]:
+- The tourism resource T = floor(100·S/(S+200)), where S is global attractiveness plus average land value.
+  T is about 85–87 because the Plaza of Transference adds 1,000 to S.
+- One unique building moves T by 0 or 1 point. Switching the Plaza off for 8 weeks changed airplane
+  passengers by nothing measurable.
+
+**What still moves them:**
+1. **City size.** Tourist offers per connection scale with P = (100N + 20,000)/(N + 20,000), where N is
+   homes + workplaces (B22).
+   - Now: about 8.7k homes + 10.7k zoned jobs = 19.4k, before service jobs [M], so P ≈ 50.
+   - At 100k: about 20.9k + 24k = 45k, so P ≈ 70 [E].
+   - That is about **+40% tourist offers from growth alone**, the largest lever this plan pulls.
+2. **Path success at the connections.** Offers scale with each connection's pathfinding success ratio.
+   The Express, the rail links and the harbour links built in B19 serve this. Keep every arrival hub one
+   transfer from every district (below).
+3. **Land value.** Parks, education and transit raise the land-value half of S. Worth 0–2 points of T in
+   total [E]; it matters for level-ups more than for tourists.
+4. **Leisure / tourist commercial and hotels are not loaded** [M: `/prefabs/buildings` lists only
+   CommercialLow/High, Office and Industrial sub-services]. They are not available as a lever.
+
+**Tourist destinations on transit** [M, distance to the nearest rail/metro stop]:
+- West CBD cluster, served by Blue/Express AP, TM, 1005 and bus 142:
+  - Trash Mall 14054: 134 m.
+  - Countdown Clock 21158: 176 m.
+  - ExpoCenter 5581: 235 m.
+  - Theater of Wonders 2891: 297 m.
+  - Grand Mall 4851: 320 m.
+  - Stadium 6007: 417 m.
+- SE cluster, served by Express S3–S6 and rail S/SE:
+  - SeaAndSky Scraper 7841: 48 m.
+  - Statue of Shopping 11918: 91 m.
+  - Botanical garden 41283: 174 m.
+  - Transport Tower 19957: 244 m.
+- Core cluster: Colossal Offices 30769 (103 m) and Cathedral of Plentitude 22750 (138 m).
+- **Plaza of Transference 21038** is 530 m from the nearest trunk stop, but bus 203 stops 81 m away and
+  97 Station Link 184 m away.
+
+Rule for new destinations: any new park, plaza or unique goes within 300 m of a metro or rail stop,
+preferably at the W1 stations (W1-C) and at N1/SR.
+
+**Arrival hubs to tourist districts, at most one transfer:**
+
+| From | West CBD | SE cluster | Plaza |
+|---|---|---|---|
+| Airport (AP) | Blue/Express, 0 | Express, 0 | Express → S1/S2, then bus 97/203, 1 |
+| Harbours 23322/42184 (S6) | Express, 0 | Express, 0 | Express → S2, then bus 97, 1 |
+| Plaza | bus 97 → rail 31333 / Express S1, 1 | bus 203, 0 | — |
+| W1 (new) | Blue, 0 | Blue → Express, 1 | Blue → Express → bus, **2**: add a W1 feeder stop at W1-E and rely on the Express. Plaza stays at 2 unless line 97 is extended to S1 (line edit, player). |
+
 ---
 
 ## 4. Master interconnectivity plan
@@ -330,7 +481,9 @@ Population itself must be read from the game UI by the player until the bridge e
 | Zoning | NW1 first grid: RH on the blocks within 400 m of 1005 and along Sophie North, CH 10% at the Robert Blvd end, O 20% on the west edge by the highway, RL on the outer row. HS infill: Office and Industrial on the ~100 empty blocks at x 3400–4600, z −2500…−1100 (jobs to keep W demand from going negative). |
 | Services | NW1: 1 `Elementary School`, 1 `Fire House`, 1 `Police Station`, 1 `Medical Clinic`, 2 parks, water pipes and power along the grid. |
 | Transit | NW1 Feeder (needs permission); NW-R station on the mainline + line 180 extension. |
+| Education / youth / tourism | +6 `Elementary School` (3 in NW1, 3 in existing gaps with the lowest coverage), 2 `Library 01` (NW1 at 1005, HS); NW1 `High School` within 250 m of 1005; 4 parks/playgrounds in NW1 so every family block is ≤ 400 m from one; residential in ≤ 50-cell chunks. Feeder and NW-R open **before** NW1 is zoned. |
 | Acceptance | population ≥ 55k (UI); homes ≥ 11.5k (`cap2.py`); Water, Electricity, Death problems each ≤ 5; LandfillFull 0; R demand > 0 and W demand ≥ 0; road anomalies 0 and disconnectedLocalRoadComponents 0; coverage ≥ 98%; all lines healthy. |
+| Acceptance (E/Y/T) | NW1: 100% of residential growables within 500 m of an Elementary School and within 800 m of rail/metro (`tmp/tampa/master/schoolcov.py` + `cov.py`); city elementary coverage ≥ 85% (now 81.6%); NoEducatedWorkers ≤ 3; EducationBoost still in `/state/policies`; Education budget ≥ 100% confirmed by the player (not readable). |
 | Agents | Opus build agent (cs1-city skill) for roads, zoning and services; Opus transit agent (cs1-transit skill) for NW-R and the feeder; Sonnet only for the service-placement list once sites are decided. Fable verifies. |
 | Risks | NW1 traffic loads Robert Blvd into the Richardson jam; death wave 50–60 game years after a mass move-in (zone in chunks); the NW-R host-track split can leave an End-signature segment (lesson B16). |
 | Player decisions | New bus line (over the cap); Richardson/Graham realignment; Merge A upgrade; NW-R track split. |
@@ -343,7 +496,9 @@ Population itself must be read from the game UI by the player until the bridge e
 | Zoning | W1 east half (~1.1 km²): offices on x 200–560, RH around W1-E and W1-C, commercial on the parkway. |
 | Services | `Nuclear Power Plant` if the power view shows > 70% use; 2 `Water Tower` in W1 + trunk under the highway; `Hospital`, `Fire Station`, `Police Headquarters`, 3 `Elementary School`, 1 `High School`, 2 `Crematory`, 2 `Combustion Plant` in or near W1. |
 | Transit | Blue West tunnel NO S end → W1-E (1.1 km) and edit 135/207; W1 North Feeder (permission). |
+| Education / youth / tourism | +5 `Elementary School` in W1 east, `High School` at W1-E (≤ 250 m), 5 parks/playgrounds; W1-E and the W1 North Feeder open before W1 zoning; new parks/plazas on the W1-E station square. |
 | Acceptance | population ≥ 70k; homes ≥ 14.7k; Blue 135/207 no problems and vehicles = target within 1 game day; W1 growables 100% within 400 m of a stop; highway flow not below today's 59%. |
+| Acceptance (E/Y/T) | W1 east: 100% of homes within 500 m of an Elementary School, 400 m of a stop, 800 m of W1-E; high-school coverage ≥ 70%; airplane + ship passengers not below their no-change range (B22: air 54–104/wk). |
 | Agents | Opus metro agent (b16 planner, bends.py) for Blue West; Opus build agent for W1 roads/zoning. |
 | Risks | Blue West tunnel must clear the Blue/Express legs at NO's north end and the highway foundations are irrelevant underground; runway noise on W1's east edge; a single W1 gateway until the second access exists. |
 | Player decisions | West at-grade junction consolidation; bus line; budget for the metro build. |
@@ -356,7 +511,9 @@ Population itself must be read from the game UI by the player until the bridge e
 | Zoning | W1 west half (RH at W1-W, RL in the south-west); N1 (offices/industry east, mixed west). |
 | Services | 2nd `Nuclear Power Plant` if not done; 3 `Water Intake` on the E1 shore; 3 `Water Treatment Plant` on the south bay; `University` in W1; the district packages from §3. |
 | Transit | Blue West W1-C and W1-W; W1 South Feeder (permission); line 245 extended into N1. |
+| Education / youth / tourism | +5 `Elementary School`, `University` + `Library 01` at W1-C, `High School` at W1-W, 2nd N1 `Elementary School`; 5 parks in W1 west; tourist-facing plaza/park at W1-C. |
 | Acceptance | population ≥ 85k; homes ≥ 17.8k; Red 7/227 riders up (compare 4 periods before/after N1 opens against its no-change range); modal share ≥ 10%. |
+| Acceptance (E/Y/T) | university coverage ≥ 65% of homes (now 59.9%); high-school coverage ≥ 72%; every new High School/University ≤ 250 m from a platform; tourist passengers on transit (`cityPassengersByType.total.tourists`, 741/wk now) not below the pre-phase range. |
 | Agents | as phase 2. |
 | Risks | Vehicle and citizen-instance limits start to matter (not readable, see §6); office jobs level only with education. |
 | Player decisions | South highway junction consolidation; bus line. |
@@ -368,7 +525,9 @@ Population itself must be read from the game UI by the player until the bridge e
 | Roads/zoning | C1 (grid x 900–1700, z 200–840); level-up programme (education, parks, land value near stations). If short: E1, then SW1. Optional: upzone RL → RH within 400 m of metro stations (player). |
 | Services | Remaining §3 counts, placed where problems appear. |
 | Transit | C1-R station on the SW branch, C1 Feeder; E1-R and E1 Feeder if E1 opens; SWB and line 90 extension only if SW1 opens. |
+| Education / youth / tourism | +5 `Elementary School`, `High School` at C1-R, 3 parks in C1; any new unique or park within 300 m of a trunk stop. |
 | Acceptance | population ≥ 100k (UI); homes ≥ 20.9k; problems total ≤ today's 81 with no FatalProblem cluster; modal share ≥ 12%; coverage ≥ 98%; all lines healthy; trafficFlowPercent ≥ 55. |
+| Acceptance (E/Y/T) | elementary coverage ≥ 90%, high ≥ 75%, university ≥ 65% of residential growables; NoEducatedWorkers 0; tourist transit riders ≥ 1,000/wk [E target, +35% on 741]; every arrival hub ≤ 1 transfer to West CBD and SE clusters (check line stop lists). |
 | Player decisions | Upzoning (demolition); SW1 highway crossings and rail; any further bus lines. |
 
 ---
