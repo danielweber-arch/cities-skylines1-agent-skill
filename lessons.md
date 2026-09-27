@@ -229,3 +229,8 @@
 - **Action:** Turned it off (real SetProductionRate 0) for 8 game weeks.
 - **Result:** Airplane passengers 62-103 (mean 83) vs 63-104 (mean ~81) with it on. No measurable change.
 - **Rule:** Airport volume here is set by city size and connection path success, not by competing tourist entry points. Keep the Plaza on.
+
+### 2026-09-27 — `for row in $(jq -c ...)` splits JSON rows on spaces
+- **Situation:** Looping over segment rows whose prefab name contained spaces ("Large Road with Grass Median").
+- **Result:** Every row was split into fragments; all calls were refused ("id is required", "Road is too short") — harmless only because the API validated.
+- **Rule:** Iterate JSON rows with `jq -c '.[]' f | while IFS= read -r row; do ...; done`, never `for row in $(...)`. Save immediately after any live change — the player can close the game at any moment (bus lanes were lost this way).
