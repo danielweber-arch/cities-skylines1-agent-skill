@@ -164,3 +164,7 @@ batches:
     - Bus lanes on Laurel 28058/26028.
     - Any work at S/SE needs the 60 m rule lifted.
   - Save: not taken; nothing changed in this round.
+- B21 decisions (player: "Make the decisions"):
+  - Deleted bus line 60 "Industrial West Feeder" (31-37 riders/wk after 3 redesigns; every version that gained riders took them from Metro Blue). Stops were (1295,1765) (1298,1523) (1175,1293) (903,1289) (776,1410) (1079,1710) (1294,1903).
+  - Deleted Bay Ferry 224 (0 riders in 14 game weeks; harbors 323 m apart on foot). Stops were Harbor 23322 and Harbor 42184. Harbors stay linked by metro Green and buses.
+  - Approved traffic fixes: Merge B 752 -> 6 lanes; Stephen St 8278 -> Medium Road (B20 engineer).
