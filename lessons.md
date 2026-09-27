@@ -193,3 +193,27 @@
 - **Situation:** Red ~45/wk per line, Green 17-35, while nearby buses had 1,700-2,600 waiting.
 - **Result:** Ruled out: train speed (speed code has a curve term but no grade term; pathfinder ignores vehicle speed/waiting/frequency) and station access (all 16 entrances active, 19-34 m from roads). Confirmed: Green is fully duplicated by bus 13 (all 15 station pairs) and rail 78 (67-127 m from S1/S2/S4); Red's 4 northern stations have no jobs within 500 m and Red never reaches the Core2 hub. Every metro/rail trip pays a platform walking penalty (walkway lanes charged 5-10x walking) — inferred, not observed.
 - **Rule:** Place metro where it links homes to JOBS the bus/rail network does not already serve; a line that parallels an existing bus or rail line within ~150 m gets nothing. Check job counts within 500 m of each station before building.
+
+### 2026-09-26 B19 airplane passengers are set by tourism and path success, not by the airport
+- **Situation:** the player asked to "get the airport to max capacity". One vanilla Airport (29539), 4 Airplane Connections, 54-86 airplane passengers/week.
+- **Action:** decompiled TransportStationAI, PassengerPlaneAI, OutsideConnectionAI, HumanAI (ilspycmd, Assembly-CSharp.dll) and sampled the airport for 9 game months.
+- **Result:** tourist offers are made per outside connection: city size x tourism resource x the connection prefab's touristFactor x budget (capped at 125% production for budgets >= 150) x the connection's path-success ratio. A plane leaves for a gate stop when a waiting passenger there becomes BoredOfWaiting, and only if no other plane of that airport is heading to that stop within 3 km; there is no plane cap (maxVehicleCount 100000). Measured 2-4 planes out at any time. After linking every hub to the airport (one month, 21 samples) airplane passengers stayed at 59-77/wk.
+- **Rule:** do not build a second airport for volume: it adds gate stops, not tourist offers. The levers are tourism attractiveness, the plane budget up to 150, and transit from the airport (it raises the path-success ratio). Expect any effect to be slow and within the weekly swing.
+
+### 2026-09-26 B19 a free platform end can be boxed in by another line's tunnel
+- **Situation:** planned FN -> S1 to join Metro Blue and Green. S1's only free end (NW) had been placed 25 m from Red's CO -> NR hook in B16.
+- **Action:** intersected S1's axis with every metro segment before planning.
+- **Result:** Red 36766 sits 35.6 m out along the axis, so the 30 m lead ends 4.6 m from Red. The only rule-compliant way in was a 4-way crossing node X placed on both S1's axis and 36766's chord: Red and the express each go straight (0 deg), the cross turns are 53.7/126.3 deg, above the 45.8 deg lane limit, so trains cannot switch lines at X. Built with the sim paused (bulldoze keepNodes, two Red halves, then the arm); Red never showed a problem and kept 8/8 and 9/9 trains without being recreated, but both Red paths grew by 118 m (not explained).
+- **Rule:** when placing a station, check that each FREE platform end has 30 m of lead plus a turning corridor clear of other tunnels, not just that the lot is 12 m clear. If a crossing is unavoidable, put the node exactly on both chords (0 deg for both lines) with a crossing angle well above 46 deg, and build it in two stages (split plus a short arm first, watch the old line for a game day, then the long tunnel).
+
+### 2026-09-26 B19 metro lines reverse at a stop; a dead end is not needed
+- **Situation:** Blue turned back at FN and Green at S1, both at dead-end platform ends. The FN -> S1 link turned both ends into through nodes.
+- **Action:** read TransportLineAI.StartPathFind, then compared line lengths before and after.
+- **Result:** a non-fixed stop (metro and train stops: fixedPlatform false) gets two start and two end lane positions (pathPosA/B), so the path may leave a stop in the opposite direction. Blue 135/207 and Green 147/162 became 6 m shorter (5213.2 -> 5207.2) with no detour. Green showed LineNotConnected for about 1 game day and then cleared on its own.
+- **Rule:** joining a terminus's dead end to new track does not break out-and-back or one-direction lines; check that the line length does not jump. A LineNotConnected that appears when the line's own track is edited can clear by itself; one caused by missing track elsewhere does not (see "transport lines do not re-path").
+
+### 2026-09-26 B19 when the shortest Dubins path cuts another line, search via points
+- **Situation:** FN -> X had no candidate: every two-ended Dubins path (R 50-300) crossed Red's CP-CO curve.
+- **Action:** chained Dubins legs through one or two via points (x, z, heading), ranked by analytic length (dubins._words, no simulation), rejected on raw-curve clearance before resampling, then resampled with the fewest pieces that keep every bend <= 32 deg.
+- **Result:** the first full search simulated every word and did not finish in 10 minutes; with analytic lengths and pruning it ran in 3 minutes and found 20 routes of about 1,460 m. The chosen one (via (2550,1250) and (2720,1200)) is 52 pieces, max bend 32.0 deg, clearance 17.3 m. Also: a resample that ends 1 m short of a join node makes a 1 m chord that fails every piece rule; end the curve exactly on the join node.
+- **Rule:** plan around an obstacle line with via points on its far side, not with bigger radii. Prune on cheap checks before resampling.
