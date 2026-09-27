@@ -195,3 +195,9 @@ batches:
   - Bridge: set-building-active now calls BuildingAI.SetProductionRate(100/0) on the simulation thread like the info panel's on/off button (the old version only flipped a flag the game reset).
   - Plaza of Transference 21038 switched OFF at game 2038-05-29 (productionRate 100 -> 0). Baseline at switch-off: air 62/wk (58 tourists), ship 59, train 400, metro 659, bus 2,182, total 3,367 (626 tourists). Sampling 8 game weeks into tmp/tampa/tourism/plaza-off.jsonl.
   - Population 46k -> 41.7k between B19 and B23: consistent with the removal of the 227 stacked duplicate houses (B21 services); not proven.
+- B24 transit health check (player: "Ensure transportation is on point"):
+  - All 21 lines complete, no LineNotConnected, no stop problems, vehicles at target.
+  - Deleted Metro Green 147/162: the Airport Express 108/109 stops at all 6 Green stations (26653 394 41089 28003 39145 7901); Green carried 6 and 32/wk.
+  - Metro Red 7/227 budgets 130/150 -> 100 (diagnosis: more trains do not add riders).
+  - Bulldozed Bus Depot 24231 (Garbage/Crime/Death; used by no line; unreachable) and orphan links 8478, 27754 (their Harbor02 terminal road went with Harbor02). disconnectedLocalRoadComponents 2 -> 0.
+  - Waiting crowds: Bus 6 stop at (3235,439) 716 waiting on Evans 30352 next to rail S; the S junction segments 17250 (89), 30352 (83), 26028 (77), 28058 (72) are plain Large Road with Grass Median. Proposed swap to "Large Road with Tree Median and Bus Lanes" (same width) was DENIED by the permission classifier before any road changed; the 3 stops lifted for it (line 13 idx 2/12, line 203 idx 0) were re-added at the same points (snaps 0.8-1.3 m). Awaiting the player's explicit approval.
