@@ -176,37 +176,43 @@ namespace SkylinesAgentBridge
             }
 
             BuildingManager buildings = BuildingManager.instance;
-            Building building = buildings.m_buildings.m_buffer[id];
-            if ((building.m_flags & Building.Flags.Created) == Building.Flags.None)
+            if ((buildings.m_buildings.m_buffer[id].m_flags & Building.Flags.Created) == Building.Flags.None)
             {
                 return CommandResult.Fail("Building was not found: " + id);
             }
 
-            Building.Flags before = building.m_flags;
-            BuildingInfo info = building.Info;
-            if (info != null && info.m_buildingAI != null)
+            // Same as the info panel's on/off button (CityServiceWorldInfoPanel.ToggleBuilding):
+            // BuildingAI.SetProductionRate(id, ref building, 100 or 0) on the simulation thread.
+            // The old version only flipped the Active flag on a copy, which the game set back
+            // within a step, so the building never actually stopped.
+            ushort buildingId = id;
+            bool turnOn = active;
+            SimulationJob job = null;
+            job = new SimulationJob(delegate
             {
-                InvokeManualActivation(info.m_buildingAI, id, ref building, active);
-            }
-
-            if (active)
-            {
-                building.m_flags |= Building.Flags.Active;
-            }
-            else
-            {
-                building.m_flags &= ~Building.Flags.Active;
-            }
-            buildings.m_buildings.m_buffer[id] = building;
-
-            string prefab = info == null ? "" : info.name;
-            string json = "{\"ok\":true,\"id\":" + id +
-                ",\"active\":" + JsonUtil.Bool(active) +
-                ",\"prefab\":\"" + JsonUtil.Escape(prefab) + "\"" +
-                ",\"beforeFlags\":\"" + JsonUtil.Escape(before.ToString()) + "\"" +
-                ",\"afterFlags\":\"" + JsonUtil.Escape(building.m_flags.ToString()) + "\"}";
-            Debug.Log("[SkylinesAgentBridge] Set building " + id + " active=" + active);
-            return CommandResult.FromJson(json);
+                if (!job.BeginCommit())
+                {
+                    return CommandResult.Fail("Timed out before the building was toggled.");
+                }
+                BuildingInfo info = buildings.m_buildings.m_buffer[buildingId].Info;
+                if (info == null || info.m_buildingAI == null)
+                {
+                    return CommandResult.Fail("Building has no AI: " + buildingId);
+                }
+                byte rateBefore = buildings.m_buildings.m_buffer[buildingId].m_productionRate;
+                info.m_buildingAI.SetProductionRate(buildingId, ref buildings.m_buildings.m_buffer[buildingId], (byte)(turnOn ? 100 : 0));
+                byte rateAfter = buildings.m_buildings.m_buffer[buildingId].m_productionRate;
+                return CommandResult.FromJson("{\"ok\":true,\"id\":" + buildingId +
+                    ",\"active\":" + JsonUtil.Bool(turnOn) +
+                    ",\"prefab\":\"" + JsonUtil.Escape(info.name) + "\"" +
+                    ",\"productionRateBefore\":" + rateBefore +
+                    ",\"productionRateAfter\":" + rateAfter +
+                    ",\"flags\":\"" + JsonUtil.Escape(buildings.m_buildings.m_buffer[buildingId].m_flags.ToString()) + "\"}");
+            });
+            Singleton<SimulationManager>.instance.AddAction(job.Run);
+            CommandResult deferred = CommandResult.FromJson("{\"ok\":true,\"queued\":true}");
+            deferred.Deferred = job;
+            return deferred;
         }
 
         private static void InvokeManualActivation(BuildingAI ai, ushort id, ref Building building, bool active)
