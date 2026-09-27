@@ -218,7 +218,7 @@ deliberately out of scope, with enough context to pick up cold.
 - [ ] City Train Line 69 (31333 <-> 47366) shows LineNotConnected on both stops after 3 game days; no track path between the two stations in at least one direction. Rail planner tracing the graph.
 - [ ] Bridge dryRun validates only the prefab: `place-building` dryRun passed a Harbor at (0,0) (src/BuildingCommands.cs:36), `build-network` likewise (src/RoadCommands.cs:34). Impact: dry runs cannot vet harbor/shore placements. Fix: run the prefab's own CheckBuildPosition / NetTool validation in dryRun.
   - [x] place-building half: `"validate"` (default on for Shoreline prefabs) runs BuildingTool's shore snap + BuildingAI.CheckBuildPosition + CheckSpace(test) on the simulation thread (42c8aaf). **Unverified in game until the next restart**: first use must be a dryRun on a known-good harbor (e.g. near 23322) to confirm it reports canPlace true there and ShoreNotFound at (0,0). `build-network` half still open.
-- [ ] Bridge cannot build level crossings (track and road never share a node, NodeHelper.CanReuseNode), elevated track (nodes at terrain height), or read Train Track m_maxTurnAngle; `/state/networks` does not expose segment flags (one-way direction, PathFailed). Impact: 47366 chord gap across Dixon St had to be drawn by the player; ship-lane breaks unmeasurable.
+- [ ] Bridge cannot build level crossings (track and road never share a node, NodeHelper.CanReuseNode), elevated track (nodes at terrain height), or read Train Track m_maxTurnAngle (read offline 2026-09-26 B15: 45 deg for Train Track, Train Track Elevated, Metro Track and Metro Station Track, sharedassets11.assets; the bridge still does not expose it); `/state/networks` does not expose segment flags (one-way direction, PathFailed). Impact: 47366 chord gap across Dixon St had to be drawn by the player; ship-lane breaks unmeasurable.
 - [ ] TAmpa ship lanes are 3 disconnected components (harbor-plan F2): west connection 16546 and southwest 48864 dead-end away from the bay. Unconfirmed that their intercity ship lines PathFail. Needs segment flags (above) to measure.
 - [x] Harbor02 access: the suggested 18355 -> Finch road was wrong (18355 is in an 11-node pocket joined only by one-way 14996). Built Laurel Link + Harbor02 Access instead (B10).
 - [x] build-network of any PlayerNetAI prefab with a pass milestone (Metro Track etc.) threw "Already in the same thread" and left a half-built segment (src/NodeHelper.cs CreateSegment). Fixed: milestone replayed on the simulation thread.
@@ -231,3 +231,19 @@ deliberately out of scope, with enough context to pick up cold.
 - [x] Station M2 46988 shows Electricity, MajorProblem (rail-plan-2 rank 0 adds power from node 4953). Fixed 2026-09-26 by power line seg 30142 (4953 -> 5585); no problem after 1 game day. Not committed yet.
 - [ ] Core2 station 36478 (1760,2265.6) shows "Water, MajorProblem" and is inactive (not Active) since placement (rail-plan-2 rank 1, B12). Line 78 still runs 2/2 trains. Nearest water pipe node 8358 at (1760,2162), ~80 m south of the footprint. Fix: a Water Pipe from 8358 to the station (needs the player/orchestrator OK; the rail brief forbade touching water networks).
 - [ ] Bulldoze of netSegment 23658 threw HTTP 500 IndexOutOfRangeException once, then succeeded on retry (B12). Cause unknown; related to the building-bulldoze 500s above? Needs a stack trace from the game log.
+
+- [ ] **Metro out-and-back stops cannot be told apart in a dry run** — `src/TransitCommands.cs:1090-1117` (found 2026-09-26, B14)
+  For an underground `Metro Entrance`, all 12 `CalculateSpawnPosition` seeds return the platform-track midpoint. So
+  `transit-line-create` resolves the outbound and return visits of a station to the same point (0.0 m apart). The metro
+  plan's check (`metro-plan.json` bridgeIssues: "outbound and return stops ... differ > 4 m") can never pass. Measured on
+  8 TAmpa stations with two sets of request points. Impact: blocks M1/M2/M3 line creation under the current gate. The
+  game's TransportTool uses the same code, so a player-drawn line has the same stop points. Fix: drop or replace the
+  gate (create the line, then require no LineNotConnected and vehicles == target), or expose the lane/platform the
+  stop will use.
+- [ ] **`place-building` `validate:true` dry run does nothing for Metro Entrance** — `src/BuildingCommands.cs` (found 2026-09-26)
+  A dry run at a lot occupied by growable 6066 returned only `"Place-building validation passed."`: no `validated`,
+  `toolErrors` or `canPlace` fields. docs/api.md says `validate:true` runs CheckBuildPosition + CheckSpace for any
+  prefab. Either the dryRun returns before validation for non-shoreline prefabs, or the loaded DLL predates it. Not
+  investigated. Impact: a caller trusting the docs gets no collision check. Fix: run validation on dryRun too, or fix
+  the docs.
+- [ ] transit-line-delete can throw "Already in the same thread" part-way (line 157, the last metro line): stops released, line left as "Metro Line 0" with 0 stops; a retry released it. Fix: run TransportManager.ReleaseLine via SimulationManager.AddAction (src/TransitCommands.cs:474) like SetLineName.

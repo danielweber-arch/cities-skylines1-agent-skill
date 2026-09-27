@@ -52,3 +52,32 @@ batches:
   - Skipped: Core2 Power and SW Power (no Electricity problem on either). Open: Core2 36478 "Water, MajorProblem" and inactive (not active in flags); nearest water pipe node 8358 (1760,2162), ~80 m south of the footprint. Not fixed: the brief forbids touching water networks. Cosmetic: Route 2 deck passes 2 m from wind turbine 10643's tower at (1920,2260); Core2 access road crosses that turbine's 7x7 lot; SW branch crosses turbine 47396's lot (tower 16 m off the track); S link N is 24 m at -13.6% (spur node 121.4 -> platform 118.1).
   - Saved TAmpa b2 after ranks 1, 2, 3, 4: 18:51:40, 18:55:08, 18:58:22, 19:03:02 local (each mtime newer than the request).
 - B12 fix: Core2 36478 had Water, MajorProblem / inactive; Water Pipe seg 3466 from node 8358 to (1760,2255), new node 14836; station active, no problems.
+- B14 metro (plan tmp/tampa/metro-plan.json phases 2-4; action log tmp/tampa/metro/metro-log.jsonl, ids tmp/tampa/metro/built.json). STOPPED at M1 line creation (gate 7 failed twice); M2 and M3 not started. Rollback save TAmpa b2 19:14:04 (mtime verified) taken BEFORE any change; nothing saved after it, so the live game holds the M1 work below and the save file does not.
+  - Demolished (live re-read, prefab matched): 6066 H5 1x1 highrise_hiden_hightech01, 21592 and 43630 H4 2x2 Tenement09, 680 H4 3x2 tenement07. Not demolished: 43364 (Southeast homes dropped, see deviation).
+  - Stations (Metro Entrance; collision guard clean, no new building anomalies; all active, no problems): SR 29935 (3225.2,4309.7) platform seg 19915 nodes 13872/23165 y97.2; NS 12748 (2736.2,4151.2) a57.92 seg 12677 nodes 2407/22728; SH 15789 seg 241 nodes 23675/9063; SC 26162 seg 24732 nodes 21771/24255; HIT 35599 seg 8418 nodes 31421/11604; CJ 12602 seg 8169 nodes 14986/12957; FL 12209 seg 16310 nodes 32134/22530; CP 5814 seg 26180 nodes 20416/30432; CO 33306 seg 8376 nodes 19587/21765; NR 25858 seg 3398 nodes 12310/17840. Every platform end matched the plan's expectedTrackEnds within 0.2 m.
+  - Tunnels (Metro Track, elevation -12, 35-59 m pieces, every station node reused, createdNodeIds never contained a join node; 106 segs, 97 new nodes, 0 orphans):
+    - L1 SR-NS 33076 10302 4113 13802 30053 22747 32725 9913 32851 7961 25536 29086 (bezier; first 3 pieces checked: node y = dry-run terrain-12 exactly)
+    - L2 NS-SH 19288 33810 23335 32259 25269 12567 2689 13453 21975 (bezier)
+    - L3 SH-SC 35973 8367 17580 17446 25534 826 35999 29575 7120 27769 19255 27364 12067 18220 18647 (plan M1.19 resampled)
+    - L4 SC-HIT 23272 16265 31892 23908 3929 7476 29707 25237 13171 35742 890 742 21906 27198 (M1.20)
+    - L5 HIT-CJ 7193 5630 17046 33934 4525 17479 16994 33522 10113 18523 (M1.21)
+    - L6 CJ-FL 25819 11553 5969 29182 8063 34877 14779 34070 24250 317 380 32346 32971 12477 19227 3561 4174 13379 10120 (M1.22)
+    - L7 FL-CP 23519 33290 21103 9186 23814 (bezier; plan M1.23 resampled had a 31 m chord and a 71.5 deg node)
+    - L8 CP-CO 32216 27563 3089 3568 22581 33771 31703 23210 30359 2917 36096 18927 17733 4945 (M1.24)
+    - L9 CO-NR 35695 8777 13626 15572 16126 7179 19182 15650 (bezier; plan M1.25 had a 66 deg node)
+    - New node ids: see built.json (97).
+  - Deviation: Southeast homes (2947.9,4030.4, needed demolition 43364) replaced by NS 12748, 42 m from train station N 20505 on its access road 34413, no demolition. Adds ~330 m tunnel; L2 has 46-48 deg nodes.
+  - Deviation: 146 and 1494 (M3 lots) levelled up in place (H1->H3 Tenement04a, H1->H2 Tenement01; same position and footprint as the 18:30 snapshot). Not touched: M3 not started.
+  - Found for M2 (not started): Central-west homes (1784,2074) now collides with growable 5105 (unlisted demolition). The only free 16x16 frontage within 150 m is on Core2's access road 20549, e.g. (1799.6,2301.2) a173.53, 53 m from Core2 36478; it needs new legs (north offices S end -> site ~780 m, max node 65 deg; site -> FN N end ~390 m, max 40 deg).
+  - Gate 7 failure: the M1 dry run resolved every stop to its station (via station, intended building, snap <= 5.1 m), but both visits of each of the 8 middle stations resolved to the same point (0.0 m apart, the platform-track midpoint). Retried with points 10 m either side of the track and 36 m along it: same single point per station. No line created (line ids unchanged, Metro lines = 0).
+- B15 metro bends (2026-09-26; scripts tmp/tampa/metro/bends.py, arcplan.py, dubins.py, b15_build.py, b15_lines.py; plan b15-plan.json, result b15-result.json; built.json updated, pre-B15 copy built-pre-b15.json).
+  - Limit (fact, from the game): Metro Track, Metro Station Track, Train Track and Train Track Elevated all have `m_maxTurnAngle` = 45 (sharedassets11.assets NetInfo MonoBehaviours; Basic Road reads 180, as expected). PathFind.ProcessItemCosts blocks a non-car vehicle lane at a node when dot(XZ dirs) >= 0.01 - cos(45), i.e. a turn of about 45.8 deg or more. The bridge stores segment directions with y = 0, so the grade does not change this. Target used: 40 deg.
+  - Bends before (> 40): 16352 66.7, 4079 62.7, 32134 61.7 (FL platform), 21787 51.0, 27701 48.1, 23572 47.0, 2407 46.6 (NS platform), 15050 44.4, 26733 41.0.
+  - Replaced (Dubins arc, R 50-55, first piece 30 m straight along the platform, pieces 25.1-30.0 m, elevation -12, new arc built before the old pieces were bulldozed, createdNodeIds never held A or B, 0 orphans):
+    - L2 NS-SH, 2407 -> 23675: removed 19288 33810 23335 32259 25269 12567 2689 13453 21975; new 23196 16183 17578 25443 17351 35868 11481 27948 36250 2510 20711 36721 24809 18830.
+    - L6 CJ-FL, 12957 -> 10963: removed 25819 11553 5969 29182 8063; new 23082 33500 23190 26455 26549 34379 5571 29068 28118 15490.
+    - L7 FL-CP, 32134 -> 30432: removed 23519 33290 21103 9186 23814; new 5793 5223 24744 32698 34013 28269 1897 25564 32129 22858 18444 24832 36024 33574 29280.
+    - L9 CO-NR, 21765 -> 22397: removed 35695 8777 13626 15572 16126; new 31048 32900 18266 12878 28538 23381 28926 36766.
+  - Bends after: max 33.9 (17326, L3, untouched); every other node <= 31.2; platform junctions 2407, 32134, 12957, 21765 now 0. Metro Track count 107 -> 130 (-24 +47).
+  - Lines: 7 "Metro Red Southbound" #B71C1C (SR -> NR, 10 stops) and 227 "Metro Red Northbound" #D32F2F (NR -> SR, 10 stops). Dry run: every stop via station, intended building, snap <= 5.05 m. At speed 3: 4/4 vehicles each within 30 s, no line or stop problems over ~4 min of polling.
+  - Saved TAmpa b2: requested 19:58:05, file mtime 19:58:08 (15,374,104 bytes).
