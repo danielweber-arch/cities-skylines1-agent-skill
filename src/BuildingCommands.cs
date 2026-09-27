@@ -165,6 +165,58 @@ namespace SkylinesAgentBridge
             return CommandResult.FromJson(json);
         }
 
+        /// <summary>
+        /// The info panel's "Empty" button for landfills and cemeteries (ToggleEmptying):
+        /// BuildingAI.SetEmptying(id, ref building, value) on the simulation thread. Emptying
+        /// sends the contents to other facilities of the same service, so it needs capacity
+        /// elsewhere (incinerators, crematoria).
+        /// </summary>
+        public static CommandResult SetBuildingEmptying(string body)
+        {
+            ushort id = (ushort)JsonUtil.GetNumber(body, "id", 0f);
+            bool emptying = JsonUtil.GetBool(body, "emptying", true);
+
+            if (id == 0)
+            {
+                return CommandResult.Fail("id is required.");
+            }
+
+            BuildingManager buildings = BuildingManager.instance;
+            if ((buildings.m_buildings.m_buffer[id].m_flags & Building.Flags.Created) == Building.Flags.None)
+            {
+                return CommandResult.Fail("Building was not found: " + id);
+            }
+
+            ushort buildingId = id;
+            bool value = emptying;
+            SimulationJob job = null;
+            job = new SimulationJob(delegate
+            {
+                if (!job.BeginCommit())
+                {
+                    return CommandResult.Fail("Timed out before emptying was set.");
+                }
+                BuildingInfo info = buildings.m_buildings.m_buffer[buildingId].Info;
+                if (info == null || info.m_buildingAI == null)
+                {
+                    return CommandResult.Fail("Building has no AI: " + buildingId);
+                }
+                bool full = info.m_buildingAI.IsFull(buildingId, ref buildings.m_buildings.m_buffer[buildingId]);
+                info.m_buildingAI.SetEmptying(buildingId, ref buildings.m_buildings.m_buffer[buildingId], value);
+                Building.Flags flags = buildings.m_buildings.m_buffer[buildingId].m_flags;
+                return CommandResult.FromJson("{\"ok\":true,\"id\":" + buildingId +
+                    ",\"prefab\":\"" + JsonUtil.Escape(info.name) + "\"" +
+                    ",\"ai\":\"" + JsonUtil.Escape(info.m_buildingAI.GetType().Name) + "\"" +
+                    ",\"emptying\":" + JsonUtil.Bool(value) +
+                    ",\"wasFull\":" + JsonUtil.Bool(full) +
+                    ",\"flags\":\"" + JsonUtil.Escape(flags.ToString()) + "\"}");
+            });
+            Singleton<SimulationManager>.instance.AddAction(job.Run);
+            CommandResult deferred = CommandResult.FromJson("{\"ok\":true,\"queued\":true}");
+            deferred.Deferred = job;
+            return deferred;
+        }
+
         public static CommandResult SetBuildingActive(string body)
         {
             ushort id = (ushort)JsonUtil.GetNumber(body, "id", 0f);

@@ -874,6 +874,13 @@ Before anything changes, every point is snapped, every index is checked, and the
 - A service or sub-service with no budget slider is refused.
 - `dryRun: true` with no values returns the current budget.
 
+### POST /commands/set-building-emptying
+
+`{ "id": 8062, "emptying": true }`
+
+- The info panel's Empty button for landfills and cemeteries: `BuildingAI.SetEmptying` on the simulation thread. The contents go to other facilities of the same service, so there must be spare capacity elsewhere.
+- The response gives `wasFull`, the AI type and the building flags afterwards.
+
 ### POST /commands/set-policy
 
 `{ "policy": "FreeTransport", "districtId": 0, "enabled": true, "dryRun": false }`

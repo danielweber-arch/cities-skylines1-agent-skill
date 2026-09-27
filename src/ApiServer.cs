@@ -379,6 +379,12 @@ namespace SkylinesAgentBridge
                 return RunWithSimulationStep(request, delegate { return BuildingCommands.SetBuildingActive(body); });
             }
 
+            if (request.Method == "POST" && request.Path == "/commands/set-building-emptying")
+            {
+                string body = request.Body;
+                return RunWithSimulationStep(request, delegate { return BuildingCommands.SetBuildingEmptying(body); });
+            }
+
             if (request.Method == "POST" && request.Path == "/commands/disable-blocked-assets")
             {
                 return RunOnGameThread(request, AssetCommands.DisableBlockedAssets);
@@ -688,6 +694,11 @@ namespace SkylinesAgentBridge
             if (request.Path == "/commands/set-building-active")
             {
                 return "Set building active #" + ((int)JsonUtil.GetNumber(body, "id", 0f)).ToString();
+            }
+
+            if (request.Path == "/commands/set-building-emptying")
+            {
+                return "Set building emptying #" + ((int)JsonUtil.GetNumber(body, "id", 0f)).ToString();
             }
 
             if (request.Path == "/commands/disable-blocked-assets")
