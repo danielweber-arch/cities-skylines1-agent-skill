@@ -171,3 +171,20 @@
 - **Situation:** Bay Ferry 224 between Harbor 23322 and Harbor 42184, plus a bus stop moved to 42184's front (line 203 on Cook St 10561).
 - **Result:** 0 riders at every read over 14 game weeks; the Cook St stop had 0 waiting at every read.
 - **Rule:** a ferry only gets riders where the water route is much shorter than any land route and both ends are near homes or jobs. Check the walking distance between the two docks before building a ferry line.
+
+### 2026-09-26 B20 a density of 100 on a short stub is only about 3 cars
+- **Situation:** the S and SE station access stubs (18 m and 17 m, 2 lanes) read 99-100 in every sample and were suspected of funnelling Laurel Blvd traffic.
+- **Action:** read RoadBaseAI.SimulationStep and CarAI.SimulationStep (decompiled): density = trafficBuffer*100/(vehicle-lane length*16), and each car adds about 14 per 16-frame step.
+- **Result:** 100 is reached with about (lane length/14) cars present on average. That is about 3 cars on the stub and about 24 on a 56 m 6-lane Laurel segment. The real hot spot was the junction approach 26028 (88, rising from 30-57 further out).
+- **Rule:** normalise density by lane length before calling a segment jammed. Ignore short stubs. Find where the density ramps up along the approaches: that is where the queue starts.
+
+### 2026-09-26 B20 rebuilding a road demolishes the buildings that front it
+- **Situation:** planned to upgrade hot segments (Merge B 752, Stephen 8278) with bulldoze keepNodes + rebuild.
+- **Action:** read NetManager.ReleaseSegment and PrivateBuildingAI; found the fronting buildings by comparing building angle (+90 deg = facing) with the nearest road.
+- **Result:** releasing a segment releases its four zone blocks. The new segment's blocks start unzoned, and a building whose cells fail CheckZoning is flagged Demolishing. 752 has 2 fronting shops; 8278 has 2 fronting houses. Every hot segment in TAmpa had fronting buildings, a bus line or a station within 60 m, so no change was made.
+- **Rule:** before any bulldoze + rebuild, list the growables that front the segment (tmp/tampa/b20/feas.py). If any do, the change touches zoning. Use the in-game Upgrade tool (the player), or wait for a zone-safe upgrade command in the bridge.
+
+### 2026-09-26 B20 a line that "lost riders" recovered without a change
+- **Situation:** B18 logged line 13 falling 221 -> 174 and blamed jammed Laurel roads.
+- **Result:** with no change, line 13's weekly periods over 7 weeks were 269, 193, 338, 235, 253, 363, 247 (m_averageCount 263). Line 94's were 521-673 and line 4's 221-397.
+- **Rule:** weekly bus periods swing about +-30% with no change. Do not blame a road for a rider drop, or credit a road fix for a gain, unless the change is larger than that spread over at least 4 periods.
