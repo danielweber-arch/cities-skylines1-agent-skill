@@ -376,7 +376,7 @@ namespace SkylinesAgentBridge
             if (request.Method == "POST" && request.Path == "/commands/set-building-active")
             {
                 string body = request.Body;
-                return RunOnGameThread(request, delegate { return BuildingCommands.SetBuildingActive(body); });
+                return RunWithSimulationStep(request, delegate { return BuildingCommands.SetBuildingActive(body); });
             }
 
             if (request.Method == "POST" && request.Path == "/commands/disable-blocked-assets")
