@@ -188,3 +188,8 @@
 - **Situation:** B18 logged line 13 falling 221 -> 174 and blamed jammed Laurel roads.
 - **Result:** with no change, line 13's weekly periods over 7 weeks were 269, 193, 338, 235, 253, 363, 247 (m_averageCount 263). Line 94's were 521-673 and line 4's 221-397.
 - **Rule:** weekly bus periods swing about +-30% with no change. Do not blame a road for a rider drop, or credit a road fix for a gain, unless the change is larger than that spread over at least 4 periods.
+
+### 2026-09-26 — why metro Red/Green carry few riders (read-only diagnosis, tmp/tampa/metro-diagnosis.md)
+- **Situation:** Red ~45/wk per line, Green 17-35, while nearby buses had 1,700-2,600 waiting.
+- **Result:** Ruled out: train speed (speed code has a curve term but no grade term; pathfinder ignores vehicle speed/waiting/frequency) and station access (all 16 entrances active, 19-34 m from roads). Confirmed: Green is fully duplicated by bus 13 (all 15 station pairs) and rail 78 (67-127 m from S1/S2/S4); Red's 4 northern stations have no jobs within 500 m and Red never reaches the Core2 hub. Every metro/rail trip pays a platform walking penalty (walkway lanes charged 5-10x walking) — inferred, not observed.
+- **Rule:** Place metro where it links homes to JOBS the bus/rail network does not already serve; a line that parallels an existing bus or rail line within ~150 m gets nothing. Check job counts within 500 m of each station before building.
