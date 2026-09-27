@@ -3,6 +3,9 @@
 ## Proven Rules
 (Confirmed twice or more. Follow these first.)
 
+- **Metro/rail track: every node turn <= 40 deg, platform ends straight.** The pathfinder refuses a lane across a node turn of about 45.8 deg (m_maxTurnAngle 45, XZ only). Build legs as Dubins arcs R >= 50 m in 25-60 m pieces with 30 m straight in line with each platform, and measure with tmp/tampa/metro/bends.py before creating lines. Confirmed: B15 M1 (max 33.9, 4/4 each way), B16 M2 (max 30.4) and M3 (max 31.3), 2/2 each way.
+- **One metro line per direction, each station once.** Two stops at one Metro Entrance resolve to the same point and never path. Copy lines 7/227: one line A -> Z and one Z -> A. Confirmed: B15 (7, 227), B16 (135/207, 147/162).
+
 ## Log
 (Newest at the bottom. Format: Situation / Action / Result / Rule)
 
@@ -117,3 +120,26 @@
 - **Action:** Read `m_maxTurnAngle` from the NetInfo MonoBehaviours in sharedassets11.assets (UnityPy raw data; the float sequence halfWidth, pavementWidth, segmentLength, minHeight, maxHeight, maxSlope, maxBuildAngle, maxTurnAngle). Read PathFind.ProcessItemCosts. Replaced the four legs with sharp nodes by Dubins arcs (R 50-55, 25-30 m pieces, first piece 30 m straight off the platform), built new before bulldozing old.
 - **Result:** Metro Track, Metro Station Track, Train Track and Train Track Elevated all read 45 deg. Pathfinding refuses a non-car vehicle lane when dot(dirA, dirB) >= 0.01 - cos(min of the two infos' angle), so the limit is a turn of about 45.8 deg. Directions are XZ only, so grade has no effect. After the fix the max bend was 33.9 deg; 10-stop lines in both directions (7 and 227) ran 4/4 trains with no problems within 30 s at speed 3.
 - **Rule:** Keep every Metro/Train track node at 40 deg or less, including the platform-end junction. Leave a platform with one straight piece in line with it, then curve. A 120 deg turn needs roughly R 50 m and 5 nodes at 30 deg. Check bends with the same method (angle between the two segments at each 2-segment node) before creating any line.
+
+### 2026-09-26 build-network can leave a segment unlinked on its nodes (B16)
+- **Situation:** M3 lines 147/162 showed LineNotConnected on 5 of 6 stops each while every bend was <= 31.3 deg and /state/networks showed a clean chain S1 -> S6 (segment start/end node ids all correct, 0 orphans).
+- **Action:** Bisected with temporary 2-stop lines per leg plus one spanning line (S2-S4, running through S3 without stopping). S1-S2, S2-S3, S4-S5, S5-S6 pathed both ways; S3-S4 and S2-S4 failed. Then compared each segment's `middle` with its chord midpoint: the shift is purely along the chord and reveals the node class (about +-5.2 m where a Bend meets a Middle node, 6.0 m where one end is an End node, as on every terminus platform). Piece 19317 and S4's through platform 21245 showed the 6.0 m End signature although both their nodes have two segments by segment-side data; piece 33915 between them showed none.
+- **Result:** Nodes 20571 and 31246 behaved as dead ends, i.e. they did not list segment 33915 (the last piece of S3-S4, built normally, ok:true, createdNodeIds []). Bulldozing 33915 with keepNodes and rebuilding the same piece (new 21242) removed both 6.0 m shifts, and both lines went to 2/2 vehicles with no problems within 60 s. Grade was ruled out on the way: legs with 41.5% and 43.1% pieces path fine. Cause of the bad link not found.
+- **Rule:** After building any leg, scan its segments and the platforms it joins for the End signature (|middle shift| about 6 m on a segment whose nodes both have 2 segments). Rebuild such a piece in place (keepNodes). When a line fails, bisect with 2-stop test lines per leg and one line that runs through a station without stopping; delete them afterwards.
+
+### 2026-09-26 station order and lot position decide the tunnel length (B16)
+- **Situation:** M2's planned Central-west lot was taken (growable 5105); the free lot on Core2's road 20549 sat 270 m east of the Trash Mall station and 780 m of U-turn away from north offices.
+- **Action:** Planned every leg with a two-ended Dubins search (tmp/tampa/metro/b16plan.py: R 50-300, 30 m straight at both platform ends, clearance >= 14 m from all tunnel track and the other planned legs), for two station orders and for six lot positions along 20549.
+- **Result:** Keeping the plan's order needed a 796 m north-offices -> Core2 loop that crossed another leg; the order NO -> AP -> 1005 -> TM -> C2 -> FN needed 2,025 m in total. Along road 20549, a lot 38 m further east turned the TM -> C2 link from a 448 m loop into a 169 m S-curve (for a 30 m sideways offset with both 30 m straights kept, 125 m between platform ends forced a loop and 147 m was enough for a 152 m S-curve). Every platform end matched the 1005-derived geometry to 0.0 m.
+- **Rule:** Before placing stations, plan all legs for each candidate order and for several lots along the same frontage; pick by total length and max bend. Parallel platforms offset about 30 m sideways need roughly 150 m between their ends, or the leg becomes a loop.
+
+### 2026-09-26 terrain-following tunnels: steep pieces are real but harmless so far (B16)
+- **Situation:** New tunnel nodes sit at terrain - 12 (SampleRawHeightSmoothWithWater), but station platforms sit wherever the building puts them, up to 8 m off that line.
+- **Result:** The first or last piece at a platform reached 37.6-43.1% (the dry-run check reported 18% because it used terrain - 12 for the platform node; b16_build.py now also records gradesLive from live node y). All six metro lines path and run at those grades.
+- **Rule:** Report grades from live node y, never from dry-run y at a join. Grade does not block metro pathing; smoothing is cosmetic unless the player wants in-game-tool-legal slopes.
+
+### 2026-09-26 level-ups can shrink a footprint; re-run the collision check to see which demolitions are still needed (B16)
+- **Situation:** Plan demolitions 41777 (H1 3x3) and 1494 (H1 3x3) were H3 3x2 at the same id, position (to 1 mm) and angle.
+- **Result:** Treated as in-place level-ups of the planned buildings. Running the lot check without exclusions showed 146 no longer overlapped the planned S1 lot while 41777 did; moving S1 20 m along its road swapped 41777 for 146 and raised clearance from M1's tunnel 36766 from 12.5 m to 25.3 m.
+- **Rule:** Before demolishing, run the footprint check with no exclusions and demolish only what still overlaps. Also check the planned platform line against existing tunnels: place-building's guard ignores tunnels.
+
