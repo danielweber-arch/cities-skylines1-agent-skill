@@ -95,3 +95,25 @@
 - **Action:** Built S link S (6096 -> 19499) first, then did the 19900 bulldoze and rebuild.
 - **Result:** 19499 was reused, with createdNodeIds [] on every call. Level crossing 25231 also survived both gates, because one rail segment always stayed on it.
 - **Rule:** Before a keepNodes bulldoze, make sure every kept node still has another segment. Build the new connection first if it would not.
+
+### 2026-09-26 — underground Metro Entrance has ONE stop point; "different platforms" cannot be checked
+- **Situation:** M1 out-and-back metro line dry run. The gate required each station visited twice to snap to two platforms more than 4 m apart.
+- **Action:** Dry-ran transit-line-create twice: first with the plan's points (5 m either side of the track), then with points 10 m either side of it and 36 m along it.
+- **Result:** Every stop went via the station, to the intended building, but both visits of every station resolved to the same point (the Metro Station Track midpoint, 0.0 m apart). The bridge's port of TransportTool gets it from CalculateSpawnPosition with 12 seeds, and all 12 return the same point for a Metro Entrance. The in-game line tool uses the same code, so a player-drawn out-and-back line has the same stop points.
+- **Rule:** For underground Metro Entrance stations, the dry run cannot show platform separation. Out-and-back lines rely on fixedPlatform=false and pathfinding. Check them by creating the line and reading LineNotConnected and the vehicle count, not with a >4 m dry-run check. Decide this before gating a metro build on it.
+
+### 2026-09-26 — plan station lots churn in two ways: new growables and level-ups
+- **Situation:** Checking metro-plan lots about 1.5 h after planning.
+- **Result:** One lot had a new growable on it (5105 at the M2 Central-west site). Two listed demolitions kept their id and position but changed prefab by levelling up (146: H1 -> H3; 1494: H1 -> H2). One (43746) was gone. place-building dryRun, even with validate:true, returned only "validation passed" for Metro Entrance (no toolErrors, no CheckSpace), so it caught none of this.
+- **Rule:** Re-run the footprint check against live buildings and networks just before each placement. A listed id with a different prefab at the same position and footprint is a level-up, not a different building. Compare it with an older snapshot before deciding.
+
+### 2026-09-26 — Metro tunnels: dry-run y is the built y; resample plan polylines to the piece rule
+- **Situation:** 106 Metro Track pieces at elevation -12.
+- **Result:** Built node y matched dry-run terrain-12 exactly. Station platforms sit at building y - 12.2. Every platform end matched the 1005-derived geometry (centre 12 m behind the lot, +/-72 m along it) within 0.2 m. Arc-length resampling of a polyline with a sharp corner gives chords shorter than the step (31 m at M1.23). A cubic Bezier between the platform-end tangents cut the worst node turn from 66-71 deg to 51-63 deg.
+- **Rule:** Check the chord length after resampling, not the step length. Prefer a tangent-matched Bezier where a plan leg leaves a station at a sharp angle.
+
+### 2026-09-26 — metro (and rail) lanes do not connect across a node turn of about 46 deg
+- **Situation:** M1 had 10 stations joined by tunnels. Two-stop lines worked, but any line that passed through a station got LineNotConnected. Nine nodes turned 41-67 deg.
+- **Action:** Read `m_maxTurnAngle` from the NetInfo MonoBehaviours in sharedassets11.assets (UnityPy raw data; the float sequence halfWidth, pavementWidth, segmentLength, minHeight, maxHeight, maxSlope, maxBuildAngle, maxTurnAngle). Read PathFind.ProcessItemCosts. Replaced the four legs with sharp nodes by Dubins arcs (R 50-55, 25-30 m pieces, first piece 30 m straight off the platform), built new before bulldozing old.
+- **Result:** Metro Track, Metro Station Track, Train Track and Train Track Elevated all read 45 deg. Pathfinding refuses a non-car vehicle lane when dot(dirA, dirB) >= 0.01 - cos(min of the two infos' angle), so the limit is a turn of about 45.8 deg. Directions are XZ only, so grade has no effect. After the fix the max bend was 33.9 deg; 10-stop lines in both directions (7 and 227) ran 4/4 trains with no problems within 30 s at speed 3.
+- **Rule:** Keep every Metro/Train track node at 40 deg or less, including the platform-end junction. Leave a platform with one straight piece in line with it, then curve. A 120 deg turn needs roughly R 50 m and 5 nodes at 30 deg. Check bends with the same method (angle between the two segments at each 2-segment node) before creating any line.
