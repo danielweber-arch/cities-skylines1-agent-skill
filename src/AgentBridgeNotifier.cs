@@ -22,6 +22,7 @@ namespace SkylinesAgentBridge
         private static UILabel label;
         private static UIButton minimizeButton;
         private static UIButton clearButton;
+        private static UIButton chatButton;
         private static bool minimized;
         private static bool dragging;
         private static Vector3 lastMousePosition;
@@ -63,6 +64,7 @@ namespace SkylinesAgentBridge
             label = null;
             minimizeButton = null;
             clearButton = null;
+            chatButton = null;
             minimized = false;
         }
 
@@ -105,10 +107,22 @@ namespace SkylinesAgentBridge
             titleLabel.textScale = 0.86f;
             titleLabel.textColor = new Color32(235, 245, 255, 255);
             titleLabel.autoSize = false;
-            titleLabel.width = 390f;
+            titleLabel.width = 350f;
             titleLabel.height = 24f;
             titleLabel.relativePosition = new Vector3(10f, 8f);
             RegisterDragEvents(titleLabel);
+
+            // Opens and closes the separate Claude chat window (ChatPanel).
+            chatButton = CreateButton("SkylinesAgentBridgeNotifierChat", "Claude", 404f);
+            if (chatButton != null)
+            {
+                chatButton.width = 60f;
+                chatButton.tooltip = "Show or hide the Claude chat window (Ctrl+Shift+C)";
+                chatButton.eventClick += delegate(UIComponent component, UIMouseEventParameter eventParam)
+                {
+                    ChatPanel.Toggle();
+                };
+            }
 
             minimizeButton = CreateButton("SkylinesAgentBridgeNotifierMinimize", "_", 470f);
             if (minimizeButton != null)

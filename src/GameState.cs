@@ -331,7 +331,9 @@ namespace SkylinesAgentBridge
                 json.Append(",\"subService\":\"").Append(JsonUtil.Escape(info.m_class.m_subService.ToString())).Append("\"");
                 json.Append(",\"level\":\"").Append(JsonUtil.Escape(info.m_class.m_level.ToString())).Append("\"");
                 json.Append(",\"width\":").Append(info.GetWidth());
-                json.Append(",\"length\":").Append(info.GetLength()).Append("}");
+                json.Append(",\"length\":").Append(info.GetLength());
+                json.Append(",\"placementMode\":\"").Append(JsonUtil.Escape(info.m_placementMode.ToString())).Append("\"");
+                json.Append(",\"ai\":\"").Append(JsonUtil.Escape(info.m_buildingAI == null ? "" : info.m_buildingAI.GetType().Name)).Append("\"}");
                 first = false;
             }
 

@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: "Cities: Skylines 1 Agent Skill"
-  text: "API-driven city operations for Codex agents"
+  text: "API-driven city operations for Claude agents"
   tagline: "Inspect, repair, build, zone, simulate, and save a Cities: Skylines 1 city through a local bridge instead of screen scraping."
   image:
     src: /agent-bridge-icon.svg
@@ -22,15 +22,15 @@ features:
   - title: Small Commands
     details: Use explicit build, bulldoze, place, move, zone, speed, batch, and save operations that are easy to audit.
   - title: Agent Ready
-    details: The root SKILL.md teaches Codex how to resume a city, inspect it, make scoped repairs, and verify the save.
+    details: The root SKILL.md teaches Claude how to resume a city, inspect it, make scoped repairs, and verify the save.
 ---
 
 ## What This Repository Contains
 
 - A Cities: Skylines 1 mod source tree under `src/`.
 - A local HTTP API bridge on `http://127.0.0.1:32123`.
-- PowerShell scripts for build, launch, smoke tests, road inspection, repair loops, and saves.
-- A Codex skill definition in `SKILL.md` and Skill UI metadata in `agents/openai.yaml`.
+- Bash scripts (curl + jq) for build, launch, smoke tests, road inspection, repair loops, and saves.
+- A Claude skill definition in `SKILL.md` and Skill UI metadata in `agents/openai.yaml`.
 
 ## Primary Workflow
 
