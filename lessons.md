@@ -223,3 +223,9 @@
 - **Action:** read CheckActualTourismResource and every global Attractiveness writer in the decompiled Assembly-CSharp; read monument and connection prefab values from sharedassets11.assets (tmp/tampa/tourism/b22_mon.py, b22_oc.py); sampled 12 game weeks with no change.
 - **Result:** T = floor(100*S/(S+200)), an integer, with S = global Attractiveness + average land value. The Plaza of Transference (SpaceElevatorAI) adds a fixed 1000, so S >= 1188 and T is about 85-87. A unique (att 5-20) moves T by 0 or 1 point (0-1.2% airplane offers); all 15 unbuilt ones move it 1-2 points. Regular parks add only local attractiveness. Meanwhile airplane passengers went 63 -> 104 -> 76 -> 92 per week with nothing changed. The Plaza is also a tourist gateway with touristFactor 15,000 vs 1,500 per Airplane Connection.
 - **Rule:** before building for tourism, compute S and T; once a SpaceElevatorAI building is active, uniques and parks are not an airplane lever. T raises every connection alike, so it never changes the airplane share. Measure the no-change weekly range before crediting any build with an effect.
+
+### 2026-09-27 — switching off the Plaza of Transference did not help the airport
+- **Situation:** The Plaza is a tourist entry point with 15,000 tourist factor vs 6,000 for all four airplane connections; the hypothesis was that it steals airport tourists.
+- **Action:** Turned it off (real SetProductionRate 0) for 8 game weeks.
+- **Result:** Airplane passengers 62-103 (mean 83) vs 63-104 (mean ~81) with it on. No measurable change.
+- **Rule:** Airport volume here is set by city size and connection path success, not by competing tourist entry points. Keep the Plaza on.
