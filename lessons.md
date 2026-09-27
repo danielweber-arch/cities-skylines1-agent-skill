@@ -5,6 +5,7 @@
 
 - **Metro/rail track: every node turn <= 40 deg, platform ends straight.** The pathfinder refuses a lane across a node turn of about 45.8 deg (m_maxTurnAngle 45, XZ only). Build legs as Dubins arcs R >= 50 m in 25-60 m pieces with 30 m straight in line with each platform, and measure with tmp/tampa/metro/bends.py before creating lines. Confirmed: B15 M1 (max 33.9, 4/4 each way), B16 M2 (max 30.4) and M3 (max 31.3), 2/2 each way.
 - **One metro line per direction, each station once.** Two stops at one Metro Entrance resolve to the same point and never path. Copy lines 7/227: one line A -> Z and one Z -> A. Confirmed: B15 (7, 227), B16 (135/207, 147/162).
+- **A bus stop pair that duplicates a metro hop takes the metro's riders.** Never give a bus stops within walking distance of two stations of the same metro line. Confirmed: B18 (line 60 beside Blue NO-TM/C2: Blue 500 -> 211-326, recovered when the stops went), B27 (142 terminal-front stop + its stop 0 95 m from TM duplicated Blue AP -> TM: Blue 135+207 mean 141 with it, 243 after removing it; A/B/A).
 
 ## Log
 (Newest at the bottom. Format: Situation / Action / Result / Rule)
@@ -234,3 +235,27 @@
 - **Situation:** Looping over segment rows whose prefab name contained spaces ("Large Road with Grass Median").
 - **Result:** Every row was split into fragments; all calls were refused ("id is required", "Road is too short") — harmless only because the API validated.
 - **Rule:** Iterate JSON rows with `jq -c '.[]' f | while IFS= read -r row; do ...; done`, never `for row in $(...)`. Save immediately after any live change — the player can close the game at any moment (bus lanes were lost this way).
+
+### 2026-09-27 B27 a detached bus stop is invisible to the problem flags
+- **Situation:** line 142 showed no problems, but its stop 15 had laneId 0 / segmentId 0.
+- **Action:** compared the stop across every saved /state/transit snapshot (B18, B20, B27).
+- **Result:** laneId 0, nodeFinalCounter 0 and 0 waiting in all of them since B18: the stop node was not attached to any lane, so nobody could board, and the line still counted as complete with no problem.
+- **Rule:** in any transit health check, list stops with laneId 0 (bus/tram) as broken even when the line has no problem flag.
+
+### 2026-09-27 B27 read the road topology before picking stops; forbid U-turns in the router
+- **Situation:** planning an airport <-> west industry bus. The industry rectangle joins the network at one corner, and the two parallel spine roads (Empire/Thornton) join only at their east end.
+- **Action:** built a road-graph router (tmp/tampa/b27/route.py, route2.py with no immediate reversal) and routed every candidate stop order before the dry run.
+- **Result:** a stop on Empire westbound would have cost a 1.6 km leg; every order carried ~1 km of dead running each way. The router predicted 5,086 m and 7,208 m against 4,916 m and 6,861 m in game (+3-5%). The version that allowed U-turns under-estimated a turnaround leg by 1.3 km.
+- **Rule:** before choosing stops, route the candidate order on the road graph with U-turns forbidden; drop any stop whose leg exceeds ~2x the straight-line distance. A stop's side (right-hand traffic) fixes the direction the bus must be heading there.
+
+### 2026-09-27 B27 an airport loop into job-only areas stays under 75
+- **Situation:** Bus 4 rebuilt as terminal -> offices/industry (88 growables with no stop within 400 m) -> Grand Mall -> terminal.
+- **Result:** 20-65/week across four phases (v1 mean 34; redesign giving terminal -> mall a 784 m leg: 33; while 142 shared its terminal stop: 22; after that was removed: 52). Industry stops read counter 1-5; the terminal and Grand Mall stops carried most riders. Coverage near the airport 88 -> 0 uncovered.
+- **Rule:** a feeder into job-only areas that are within 1 km of a metro station gets few riders even when it starts at the airport (third confirmation of the B18 feeder lesson, with a different start). Build it for coverage only if the player accepts a sub-75 line.
+
+### 2026-09-27 B27 stage changes and verify with A/B/A; wait out the path transient before saving
+- **Situation:** two changes near the airport (new Bus 4, then a 142 stop), in a city whose lines swing +-30% a week.
+- **Action:** created Bus 4 alone, measured 9 periods, redesigned, measured, then the 142 edit, measured, then reverted it and measured again.
+- **Result:** only the revert separated the 142 effect from noise (Blue 141 -> 243 while line 97, 1.3 km away, also swung 31% with nothing changed). After removing a stop, /state/transit showed 493 m and target 2 vehicles for ~40 s before settling at 5,334 m; a save taken in that window caught the transient.
+- **Rule:** one change per measurement phase, first period after a change dropped, and use a far-away unchanged line as a noise control. After any stop edit, poll until lengthMeters and targetVehicleCount settle, then save.
+

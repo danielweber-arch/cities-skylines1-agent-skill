@@ -52,6 +52,22 @@ short list of what cost the most time.
 - Bulldozing and rebuilding a road releases its zone blocks; repaint the zoning right after.
 - `set-building-active` used to flip a flag only; it now calls `SetProductionRate` like the game.
 
+## B27 airport transit + Bus 4 (time savers)
+
+- **Route stop orders on the road graph before any dry run.** tmp/tampa/b27/route2.py (no U-turns)
+  matched in-game line length within 3-5% and caught a 1.6 km leg from one badly placed stop. Two
+  minutes of routing replaced what would have been a create / measure / redesign cycle (~10 min each).
+- **One change per phase, then A/B/A.** Lines swing +-30% a week; only reverting the 142 stop showed
+  it was costing Blue ~100 riders/week. Stage changes from the start rather than stacking them.
+- **Keep a far-away unchanged line as a noise control** (line 97 here). Its 31% swing with nothing
+  changed stopped a false revert of Bus 4 over a 142 dip.
+- **Check stops for laneId 0**, not only line problem flags: a detached stop sat unnoticed on 142
+  from B18 to B27.
+- **After a stop edit, poll until length and target vehicles settle (~40 s) before saving.**
+- **Game speed:** at speed 3 one game week is about 1.4 min of wall time, so 5 periods per phase
+  take ~7-8 minutes. Budget measurement time up front; wait with python sleep loops inside one
+  Bash call (fewer tool calls than polling from the shell).
+
 ## Process that worked
 
 - Planner agent (read-only) → builder agent (with explicit gates) → orchestrator verifies live.
