@@ -457,6 +457,313 @@ starting at the trunk station rather than running beside it (lesson B18):
 - **Line health:** every line complete, no LineNotConnected, vehicles = target, and no line under
   75 riders/week after 4 periods (player rule; judge by `lastPeriod`, lesson B18).
 
+### 4.7 10x transit strategy
+
+Status: PLAN ONLY. Written 2026-09-27 (game 2039-06) from live GETs, `dryRun:true` POSTs and the
+decompiled game code, while a phase-1 builder worked in the game. Nothing was built or changed.
+Goal (player): "10x on transportation. No limits on anything at all." Baseline 3,435 riders/week in the
+brief [G]; live read 3,563/week (bus 2,228, metro 729, train 476, ship 27, air 85, balloon 18;
+residents 2,882, tourists 681) [M]. 10x is about **34,000/week**.
+Scratch: `tmp/tampa/10x/` (`ceiling.py` feasibility model, `tripgen.py` trip-rate model, `demand.py`
+home/job grid, `circ.py` circulator planner, `dry_*.json` dry runs, `consult_*` second opinion,
+`dec/*.cs` decompiled sources; line numbers below refer to those files, produced with
+`ilspycmd -t <Type> Assembly-CSharp.dll`).
+
+#### 4.7.0 Verdict
+
+| Question | Answer |
+|---|---|
+| Is 34k/week reachable at 100k residents? | **Not on the estimates** [E]. It needs 5.0–6.6x more boardings per resident trip than today (the blind second opinion derived 4.9x under its own assumptions); the vanilla design levers give ~1.4–2.5x, and the theoretical top is ~3.5–4.5x. Not proven impossible: the gap rests on unmeasured inputs (4.7.5). |
+| At 150k? | Only in the most favourable vehicle-count case (needs M 3.6–4.0) **and** with a near-theoretical network (almost every trip on transit, ~2 legs each) [E]. Not a plannable target. |
+| What is plannable? | **~11–13k/week at 100k (3–3.6x), stretch ~16k (4.5x)**; ~13–16k at 150k, stretch ~20k [E]. This matches the 12% (12k/week) target in §4.6. |
+| Why the ceiling | (1) Each resident gets **one** trip decision per counted week. (2) Trip generation is **throttled by the active vehicle count** (DoRandomMove), so trips per resident fall as the city grows. (3) Car-less residents already have no choice but transit for any trip longer than a 1 km walk, so most of the easy share is already taken. [M code, E size] |
+| Biggest honest lever | Riders are counted **per boarding**: a forced transfer counts a trip twice. A feeder/trunk network raises the count without moving more people. Say so when reporting. |
+| Decisive unknown | Today's trip count and mode split. The bridge cannot read the vehicle count, the citizen-instance count or trips. Adding that read settles the verdict (see 4.7.5). |
+
+#### 4.7.1 Mechanics that decide ridership (from the game code)
+
+**Mode choice: who can drive.**
+- Car ownership depends on age only: child 0%, teen 5%, young adult 15%, adult 20%, senior 10%
+  (`ResidentAI.cs:3202-3213`). It is drawn with `new Randomizer(citizenID)`, so the same citizen always
+  gets the same answer (`ResidentAI.cs:3158-3160`). Wealth, education and policies do not enter; only the forced-car flag below overrides it.
+  Electric Cars only changes car type (`3260-3272`). [M]
+- Bicycles: 10–40% by age (`3215-3241`) but only if a bicycle vehicle is loaded; the After Dark policies
+  are not in `/state/policies`, so bicycles are probably absent [not established]. No taxi depot, so no
+  taxis (`CitizenAI.cs:1054-1066` needs `m_finalTaxiCapacity`). [M]
+- **Trips to or from a road outside connection are forced to car** (`BorrowCar`, `ResidentAI.cs:2653-2675`):
+  100% unless an Intercity Bus Station (bus Level3) exists, then (80 − 0.4 × bus budget)%, i.e. 20% at budget 150. That building is not
+  in `/prefabs/buildings` [M]. Train, plane and ship outside trips are not forced.
+- **A car owner can still take transit.** The path request always carries Pedestrian | Vehicle |
+  PublicTransport lanes (`CitizenAI.cs:1066-1110`) and the cheapest path wins, so park-and-walk,
+  walk-and-ride and park-and-ride are all legal. Measured: 281 of 3,385 line riders (8.3%) are car
+  owners [M]; they ride at roughly half the rate of non-owners [E, age mix not readable].
+- Tourists: car 20% (90% only inside an airport area with Car Rentals, an Airports-DLC feature not present here), bike 20%,
+  taxi 20% if taxis exist (`TouristAI.cs:1435-1457`). A tourist trip to or from a road connection is
+  forced to car 80% of the time with an intercity bus station, 100% without (`TouristAI.cs:895-925`).
+
+**Path cost (what a cim compares).** Cost per metre, relative units (`PathFind.cs:777-793, 913-1128,
+1131-1250`; `TransportLineAI.cs:405-416, 472-492`):
+
+| Leg | Cost per metre | Notes |
+|---|---|---|
+| Walking | 4.0 | speed 0.25. **Each walking leg is capped at 1,000 m** (`PathFind.cs:860, 1058, 1211`). Each walking leg also pays a fixed ~100 m of walking once it has more than one piece (`1205-1208`). |
+| Metro or train platform walkway | 20–40 | Avoid-flag lanes: speed ×0.2, ×0.1 in the avoided direction (`777-793`). About 150–300 m of walking per station visit (metro diagnosis). |
+| Car, Basic / Medium / Large / Highway | 1.25 / 1.0 / 0.83 / ~0.5 (highway lane speed 2.0 not read from the assets) | × a random factor 0.9 to (1.0 + density/100) per segment (`969`), so a jammed road costs up to ~2x. Cars entering a bus lane pay a constant equal to ~20 m of driving (`1106-1109`). |
+| Bus (Free Transport on) on Basic / Medium / Large road | 0.94 / 0.75 / 0.63 | `m_averageLength × 0.75 × 100/m_speed`; m_speed from the road speed limits. |
+| Metro or train (Free Transport on) | 0.29 | m_speed clamps at 255, so metro and train cost the same per metre. |
+
+- **No waiting, frequency, crowding, ticket or transfer term** in route choice. A transfer costs only
+  its walk (plus the ~100 m walking-leg constant). [M]
+- **But waiting too long loses the rider**: after two full wait counters the cim is flagged
+  `CannotUseTransport` and re-paths without transit (`HumanAI.cs:430-452`). A car-less cim with a trip
+  over 1 km then has no path. So frequency matters only where queues build (jammed buses). [M code]
+- Consequences: (a) a car-less resident's trip over ~1 km has only transit; (b) with stops right at both
+  ends, a bus beats walking from about 0.4–0.65 km (walk 4d vs 4×(a+b) + ~800 + 0.9d, a+b = 200–400 m) [E];
+  (c) a car owner picks transit mainly when roads are jammed or a metro/rail station sits at both ends
+  (4 km trip: car ~5,500 vs metro ~5,300 units with 250 m walks each end) [E].
+
+**What counts as a passenger.** The counter increments when a citizen **gets off** a line's vehicle
+(`HumanAI.cs:962-976`, called from `BusAI.cs:601-625` and `PassengerTrainAI`), per line and per mode
+type. A trip with one transfer counts **twice**. The "week" is 4,096 frames: lines roll their counters
+once per 4,096 frames (`TransportLine.cs:1690, 2092-2097`; lines are stepped every 256 frames), which is
+7.0 calendar days at 147.66 s per frame (`SimulationManager.m_timePerFrame`). [M]
+
+**How many trips exist.** Each citizen's AI runs **once per 4,096 frames** (`CitizenManager.cs:1710-1730`,
+256 citizens per frame × 4,096 = the 1,048,576 citizen buffer). So one decision per resident per
+counted week. At home (`ResidentAI.cs:1695-1726`; shopping first at 1695, gate at 1700): leisure trip with p = 1/40, commute with p =
+x²/0.5 where x is how far the day clock is from 8:00 (0.5 at 8:00, 0 at 20:00); at work the same around
+16:00 (`1804-1830`); from a visit, home with p = 1/4 (`1958-1975`). Shopping trips come from a household
+goods counter (−20 per week, a shopper below 200: `ResidentAI.cs:509-521`). A day/night cycle is 65,536
+frames = 16 counted weeks, so every resident sees every hour. `tripgen.py` gives **0.17 trip starts per
+week for a resident with a workplace or school, 0.046 without**, before shopping and before throttling [E]
+(the blind second opinion derived 0.19 and 0.025 per step in the eligible state, the same terms without the
+state dynamics).
+
+**The throttle.** Every commute, leisure and return move above (not shopping departures) is gated by `DoRandomMove`
+(`ResidentAI.cs:1570-1579`): p = 1 − max(active vehicles / 16,384, citizen instances / 65,536). Today's
+road traffic implies about 3,000–3,460 vehicles on roads (sum of density × lane length / 14 m over all
+1,324 road segments, the B20 rule) plus ~364 rail and metro cars (every trailer is a vehicle): **about
+3.6k vehicles, p ≈ 0.78** [E] (second opinion, independently: 3,384 vehicles, p 0.79). This holds only
+if citizen instances stay under 4 × vehicles (~14k); that is not measured. As population grows, vehicles grow and p falls, so **trips per resident
+fall**. A car trip moved to transit frees a vehicle slot and raises p for everyone; a bus adds one slot
+per 30 seats, a metro train 5 slots per 150, a train 8 per 240 (same 30 seats per slot).
+
+**Capacity and fleet.** Bus 30, metro 5 cars × 30 = 150, train 8 cars × 30 = 240 (vehicle prefabs in
+sharedassets11.assets: `veh2.py`) [M]. Vehicles per line = ceil(serviceBudget × lineBudget/100 × length
+/ (d × 100)) (`TransportLine.cs:2166-2168`), with d fitted on the live lines: bus 600 m, metro ~2,930–3,120 m,
+train ~4,110–4,530 m [E fit]. Hard caps: 16,384 vehicles in total (cars, trucks, services, through
+traffic and every transit car), 65,536 citizen instances, 256 lines; depots have no vehicle cap
+(`maxVehicleCount` 100,000) [M]. Line budget goes to 500% through the bridge.
+
+**Policies.** Free Transport (×0.75 on transit cost) is already on. High Ticket Prices makes transit worse.
+**HeavyTrafficBan** adds cost only for paths flagged heavy (`PathFind.cs:238-242`); citizen paths are never
+heavy (`CitizenAI.cs:1110`), so it moves no one out of a car; it only keeps trucks off district streets.
+No vanilla car-deterrent policy is loaded (Old Town, bike policies and pedestrian zones are DLC).
+
+#### 4.7.2 Feasibility arithmetic
+
+Riders(R) = B0 × vol × M + T0 × (R/R0) × √M, with B0 = 2,882 resident and T0 = 681 tourist boardings per week
+[M] and R0 = 41.8k residents [G]. vol = (R/R0) × ((1−g)·p + g) / ((1−g)·p0 + g) is the resident trip volume
+relative to today: a share g = 0.25 of trips (shopping departures) is not gated by DoRandomMove [E]. p comes
+from the vehicle model v = a·R + b·R·((1−g)·p + g) (a: trucks, services, through traffic, transit; b: resident
+car trips, which shrink when p falls), with today's v at 1.8k / 3.65k / 5.5k and 45% of it resident car trips,
+plus one row per population where all of today's v is car trips (the second opinion's assumption) [E].
+**M** is the design multiplier on boardings per resident trip (share of trips on transit × legs per transit
+trip) relative to today. `ceiling.py` (output in `ceiling_out.txt`):
+
+| Residents | Today v, car share | Active vehicles | p | Trip volume vs today | Riders M 1.0 | M 1.65 | M 2.5 | M needed for 34k |
+|---|---|---|---|---|---|---|---|---|
+| 55,000 | 1,800, 0.45 | 2,340 | 0.86 | x1.28 | 4,586 | 7,240 | 10,642 | 8.5 |
+| 55,000 | 3,650, 0.45 | 4,680 | 0.71 | x1.24 | 4,473 | 7,054 | 10,360 | 8.8 |
+| 55,000 | 5,500, 0.45 | 6,948 | 0.58 | x1.20 | 4,352 | 6,854 | 10,057 | 9.1 |
+| 55,000 | 3,650, 1.0 | 4,562 | 0.72 | x1.25 | 4,498 | 7,094 | 10,422 | 8.7 |
+| 70,000 | 1,800, 0.45 | 2,937 | 0.82 | x1.58 | 5,693 | 8,976 | 13,184 | 6.8 |
+| 70,000 | 3,650, 0.45 | 5,789 | 0.65 | x1.48 | 5,399 | 8,492 | 12,450 | 7.3 |
+| 70,000 | 5,500, 0.45 | 8,460 | 0.48 | x1.37 | 5,093 | 7,986 | 11,684 | 7.8 |
+| 70,000 | 3,650, 1.0 | 5,493 | 0.66 | x1.50 | 5,478 | 8,622 | 12,647 | 7.1 |
+| 85,000 | 1,800, 0.45 | 3,519 | 0.79 | x1.86 | 6,743 | 10,619 | 15,584 | 5.7 |
+| 85,000 | 3,650, 0.45 | 6,837 | 0.58 | x1.68 | 6,219 | 9,755 | 14,274 | 6.3 |
+| 85,000 | 5,500, 0.45 | 9,846 | 0.40 | x1.49 | 5,687 | 8,878 | 12,945 | 7.0 |
+| 85,000 | 3,650, 1.0 | 6,329 | 0.61 | x1.73 | 6,382 | 10,025 | 14,683 | 6.1 |
+| 100,000 | 1,800, 0.45 | 4,085 | 0.75 | x2.12 | 7,738 | 12,172 | 17,848 | 5.0 |
+| 100,000 | 3,650, 0.45 | 7,829 | 0.52 | x1.84 | 6,940 | 10,856 | 15,854 | 5.7 |
+| 100,000 | 5,500, 0.45 | 11,122 | 0.32 | x1.57 | 6,153 | 9,556 | 13,885 | 6.6 |
+| 100,000 | 3,650, 1.0 | 7,084 | 0.57 | x1.94 | 7,223 | 11,322 | 16,560 | 5.4 |
+| 150,000 | 1,800, 0.45 | 5,869 | 0.64 | x2.86 | 10,686 | 16,739 | 24,471 | 3.6 |
+| 150,000 | 3,650, 0.45 | 10,786 | 0.34 | x2.18 | 8,730 | 13,511 | 19,579 | 4.6 |
+| 150,000 | 5,500, 0.45 | 14,725 | 0.10 | x1.56 | 6,949 | 10,573 | 15,128 | 6.2 |
+| 150,000 | 3,650, 1.0 | 9,144 | 0.44 | x2.51 | 9,663 | 15,051 | 21,913 | 4.0 |
+
+What M can reach [E]:
+- Legs: splitting cross-city buses at trunk stations and ending every feeder at a station: ×1.3–1.6.
+- Share: short trips pulled off walking by 200–250 m stop spacing, car owners pulled by metro/rail at both
+  ends of jammed corridors: ×1.1–1.3.
+- Together **M ≈ 1.4–2.1; 2.5 is a stretch**. The theoretical top, if today ~25–35% of resident trips use
+  transit (0.39–0.52 boardings per resident trip: 2,882 over ~5.5–7.3k trip starts/week, from `tripgen.py`
+  with 57% of residents holding a job or school place, p 0.78, plus up to 3.5k shopping starts) and every trip
+  rode with 2 legs, is **M ≈ 3.5–4.5** [E]. 34k needs **M 5.0–6.6 at 100k and 3.6–6.2 at 150k**.
+- Every figure in this table is an estimate. The weakest inputs are today's vehicle count (from density,
+  ±50%) and the trip rate (shopping only bounded, trip durations ignored). The table spans the vehicle range; see 4.7.7 for what
+  the second opinion found.
+
+#### 4.7.3 The 10x network (vanilla modes only)
+
+Design rules from 4.7.1:
+1. **Feeders end at trunk stations; nothing runs across a trunk.** Every cross-city trip becomes
+   feeder + trunk (+ feeder). This is where most of the count gain comes from, and it is an accounting
+   gain: the same people, counted per boarding.
+2. **Shared hub stops.** The two halves of a split line stop at exactly the same positions at the hub, so
+   the transfer is a few metres of walking (cost ~100 m of walking), not a street crossing.
+3. **Stop spacing 200–250 m** on feeders in mixed home/job areas (line 246's pattern: 15 stops on 2.3 km,
+   241 riders/week = 106 per km, against 30–59 per km on the long lines [M]).
+4. **Metro and rail only where they link homes to jobs that buses do not already serve**; a line beside
+   another line within ~150 m takes its riders (B18, metro diagnosis). New metro adds riders mainly by
+   serving new districts and by pulling car owners off jammed roads; between two transit options it only
+   moves riders.
+5. **Lean fleets, few trucks.** Vehicle slots throttle trips (4.7.1). Budget 100 on new feeders; raise a
+   line only where one stop has > 300 waiting and its corridor density is < 80 (B18: more buses on a
+   jammed road added nobody). Offices over industry in new zoning (fewer trucks).
+6. **Coverage is not the constraint**: 99.3% of homes within 400 m of a bus stop, 98.9% within 800 m of a
+   metro/rail stop; jobs 96.2% / 98.1% [M, `demand.py`].
+
+**Phase 1 lines (42k → 55k), all dry-run with `dryRun:true`, every stop `via: segment`, max snap 0.6 m, 0
+segment-0 snaps** (`dry_splits.json`, `dry_10x_North_Circulator.json`):
+
+| # | Line | Stops (x, z) in order | Est. length | Buses (service 150, line budget 100) | Replaces / notes |
+|---|---|---|---|---|---|
+| 1a | **94N Robert North feeder** (hub 1005) | (1455,2693) (1640,2940) (2057,3204) (2246,3449) (2457,3502) (2655,3598) (2612,3777) (2662,4072) (2488,3944) (2316,3901) (2177,3768) (2156,3264) (1588,2557) | ~6.5 km | 29 at line budget 175 | = line 94 stops 4–16. Hub stops 4 (1455,2693) and 16 (1588,2557) are 33 m and 208 m from metro 1005 (1423,2683). |
+| 1b | **94W Airport–Core2 feeder** (hub 1005) | (1588,2557) (1067,2751) (950,2369) (1180,2353) (1531,2328) (1561,2173) (1589,2224) (1455,2693) | ~3.8 km | 17 at line budget 175 | = line 94 stops 16, 17, 18, 0–4. Then delete line 94 (43 buses at budget 175). Keep 94's budget: stop 4 already has 155 waiting, so the split must not cut capacity. |
+| 2a | **4N Laurel North feeder** (hub HIT) | (2329,3653) (2585,3716) (2905,3770) (3086,3676) (2914,3030) (2937,3021) (3110,3674) (2905,3794) (2582,3725) (2326,3661) | ~3.8 km | 10 | = line 4 stops 0–4, 15–19. Hub (2914,3030)/(2937,3021) is ~170 m from Red HIT (2886,2862). |
+| 2b | **4S Laurel Middle feeder** (HIT → 31333) | (2914,3030) (2661,2399) (2546,2177) (2522,1863) (2723,1527) (2925,1191) (2945,1203) (2744,1539) (2542,1876) (2567,2166) (2684,2390) (2937,3021) | ~5.2 km | 13 | = line 4 stops 4–15. Then delete line 4 (23 buses). |
+| 3 | **North Circulator** (Red SH feeder) | (2668.5,3747.2) Garland (2412.4,3683.7) Garland (2313.4,3512.9) Wright (2202.6,3400.2) Pierce Blake (2392.4,3396.3) Crest (2647.8,3465.2) Crest (2750.0,3621.8) Clarke | 1.68 km (road graph) | 5 | New. First stop ~80 m from SH (2741,3782). |
+| 4 | Metro Red 7/227 budget 100 → 50 | — | — | 6 → 3 trains each | Cost and 30 vehicle slots only; waiting 2–6 per stop, and wait does not enter route choice. Expect no rider change. |
+
+Build notes: save first and record 4–8 counted weeks of the combined riders on 4, 94, 245 and Red 7/227
+plus waiting at the hub stops. Create the new lines, wait for no `LineNotConnected` and vehicles at target,
+then delete the old line; diff line ids around every create and delete (lessons B2). Stops snap (dry run),
+but **four closing legs are new paths the dry run cannot check**: 94N 16→4, 94W 4→16, 4N 4→15 and
+4S 15→4 (old stop indexes). If one shows `LineNotConnected`, move that hub pair one stop along the line.
+Keep or revert on the combined count of all affected lines over 4–8 weeks against the ±30% spread, with
+no growing queue at the hubs. Keep ≤ 20 stops per line and closed loops (player rules); each half must stay
+above 75 riders/week after 4 periods.
+
+**Phase 2–4 trunk and feeders (as §4.3/§4.4, with the 10x rules added):**
+
+| Phase | Trunk | Feeders (each ends at a station, 200–250 m stops) | Extra 10x rule |
+|---|---|---|---|
+| 2 (55–70k) | Blue West tunnel NO → W1-E (320,2000); edit 135/207 | W1 North Feeder → W1-E/W1-C | RH within 500 m of W1-E; offices on the highway edge |
+| 3 (70–85k) | Blue West W1-C (−150,2200), W1-W (−550,1600); line 245 into N1 | W1 South Feeder → W1-W; N1 feeder → N 20505 | Split line 203 at SW 17218 (it carries 175 on 30 buses with 537–775 waiting at (1472,−415)/(2002,−133): check the corridor first) |
+| 4 (85–100k) | C1-R on the SW branch; E1-R if E1 opens | C1 Feeder, E1 Feeder | Upzone RL → RH within 400 m of existing stations (main session, player's words) |
+
+Considered and **not recommended for the count**:
+- **Red ↔ Airport Express through-link (NR → S2)** and **FN → FL "Purple"** (metro diagnosis fixes 1–2):
+  they turn today's two-leg trips into one-leg trips (count-neutral or negative) and mostly move riders
+  from bus 94 and Blue. Build only as a phase-3 experiment if car-owner capture is wanted, after the
+  bridge can read the mode split.
+- **Removing car-friendly shortcuts**: only ~15–20% of trips have a car to give up, and longer car trips
+  keep more vehicles on the map, which lowers p and so trips for everyone. The facts do not support it.
+- **More buses on long queues** without a road fix (B18), **a second airport** (B19), **uniques for
+  tourists** (B22), **HeavyTrafficBan for mode shift** (4.7.1).
+
+#### 4.7.4 Phasing and rider targets
+
+| Phase | Residents | M by then | Target riders/week | Stretch (M) | Check (last 4 periods, judged against the no-change spread) |
+|---|---|---|---|---|---|
+| now | 41.8k | 1.0 | 3,563 [M] | — | — |
+| 1 | 55k | 1.3 (splits 1–2, circulator 3) | **5,700** | 7,100 (1.65) | 94N+94W above 94's periods ×1.3; 4N+4S above 4's 221–397 ×1.3 |
+| 2 | 70k | 1.45 | **7,500** | 9,200 (1.8) | W1-E and the W1 feeder ≥ 75 each |
+| 3 | 85k | 1.6 | **9,500** | 11,600 (2.0) | boardings per resident ≥ 0.11/week |
+| 4 | 100k | 1.65–2.0 | **10,900–12,900** | 15,900 (2.5) | ≥ 3x today |
+
+Targets use the middle vehicle case (today ~3.65k vehicles, 45% resident car trips); with 1.8k or 5.5k
+vehicles the 100k target at M 1.65 moves to 12.2k or 9.6k [E].
+
+#### 4.7.5 Constraints
+
+- **Bridge gaps** (belong in TODOS.md; this task could only write this file):
+  (1) no `VehicleManager.m_vehicleCount` or `CitizenManager.m_instanceCount` read: the trip throttle p
+  cannot be measured; (2) no mode-split read: counting citizen instances by state (walking, waiting,
+  in a transit vehicle, in a car) would give the live share and settle the verdict; (3) no population
+  read (`citizens.count` 43,415 includes tourists); (4) no line-path read, so a split's turnaround can
+  only be checked after creation; (5) no vehicle positions.
+- **Vehicle limit**: 16,384 including every train car. Watch it from phase 3 on; it is the ceiling on
+  trips, not only on traffic.
+- **Traffic**: lines 4, 13, 94, 142 run on the jammed Laurel/Richardson corridors (§4.1). Bus lanes there
+  need road rebuilds with fronting buildings (B20): player or main session.
+- **Classifier rule**: any step that demolishes occupied buildings or rezones built blocks (station-area
+  upzoning, bus-lane rebuilds with fronting buildings) runs in the main session right after the player's
+  own approval of that exact step.
+- **Player rules**: ≤ 20 stops per bus line, closed loops, lines < 75 riders/week redesigned or removed.
+- Observed during this read: two `Overground Metro Station 01` buildings (18470 at (1614,2295), 32802 at
+  (848,1919)) with no lines, presumably the phase-1 builder's work in progress; line 18's budget is 100
+  although B27 recorded 100 → 75.
+
+#### 4.7.6 Top 10 actions for the builder, ranked
+
+Expected riders/week are increments over today, each measured over 4 periods against the no-change spread
+(bus lines swing ±30% week to week) [E unless marked]:
+
+| Rank | Action | Phase | Expected riders/week |
+|---|---|---|---|
+| 1 | **Add the missing read** (vehicle count, instance count, citizen instances by state) to the bridge, then re-run `ceiling.py` with measured inputs. Decides whether 34k is even possible. | now | 0 (decision value) |
+| 2 | **Split line 94 at 1005** into 94N + 94W (table 1a/1b) | 1 | +230–340 (through trips counted twice), if the closing legs path and the hub queue does not grow |
+| 3 | **Split line 4 at HIT** into 4N + 4S (2a/2b) | 1 | +80–130 (plus some riders moving to Red) |
+| 4 | **North Circulator** feeding Red SH (3) | 1 | +60–150 bus, +30–80 on Red |
+| 5 | **Blue West + W1 feeders ending at W1 stations**, RH within 500 m of W1-E/W1-C/W1-W | 2–3 | +2,500–3,500 at ~30k W1 residents (0.069 × M 1.3–1.65 per resident) |
+| 6 | **Every new district's feeder ends at its station, 200–250 m stops** (NW1, N1, C1, E1 per §4.4) | 1–4 | +1,000–2,000 by 100k |
+| 7 | **Offices over industry** for new jobs (fewer trucks = more trips); no road-capacity projects that exist only for cars | 1–4 | each 1,000 vehicles avoided at 100k ≈ +6% trips ≈ +400–700 |
+| 8 | **Densify stops** to 200–250 m on the split halves and on 13, 142, 203 in mixed cells (edit addStops, ≤ 20 stops) | 1–2 | +100–300 |
+| 9 | **Split line 203 at SW 17218** after reading its corridor (537–775 waiting at two stops) | 3 | +50–150 |
+| 10 | **Bus lanes on Laurel/Richardson** (player/main session) to cut queue abandonment | 2–3 | 0–10% on lines 4/13/94/142, i.e. +0–120 |
+| — | Red 7/227 budget 100 → 50 | 1 | 0 (frees 30 vehicle slots and upkeep) |
+
+Sum of 2–10 by 100k: about **+4,000–7,500 on top of population growth**, which is what the 10.9–12.9k
+target in 4.7.4 assumes.
+
+#### 4.7.7 Not tested, and the second opinion
+
+Not tested: any line in game (dry runs check stop snapping only, not paths); the vehicle count (inferred
+from traffic density with the B20 rule); the trip rate (`tripgen.py` ignores shopping and trip duration);
+today's legs per trip (assumed ~1.2–1.3); bicycles; the effect of any split on car owners and short trips;
+whether citizen instances, not vehicles, bind the throttle. The 0.37 boardings per trip and the M ceiling
+rest on those.
+
+Second opinion: one blind, refute-only consult (Cursor `gpt-5.6-sol-high`; prompt and answer in
+`consult_prompt.md` / `consult_out_sol.txt`; code excerpts and live figures pasted by script, my numbers
+withheld). grok was not run: this is a plan, nothing is irreversible or about money. What it found:
+- **ESTABLISHED:** C3 (forced car to road connections without an intercity bus station) and C4 (one count
+  per alighting, so transfers count twice). The other claims came back CONSISTENT because the prompt left
+  out the proving lines; I have since checked them: `CitizenAI.cs:1066-1072` adds the Vehicle lanes for a
+  car owner (C2); `ResidentAI.cs:435-455` calls `UpdateLocation` on every citizen step (C5);
+  `CitizenAI.cs:1123` passes `isHeavyVehicle: false`, and `PathFind.cs:238-242` adds HeavyBan only for
+  heavy paths (C9).
+- **C6 was overstated**: shopping departures bypass `DoRandomMove`, and the throttle follows citizen
+  instances instead of vehicles if instances exceed ~4 × vehicles. The model now leaves 25% of trips
+  ungated (`g`), and 4.7.5 lists the instance count as unmeasured.
+- **Independent figures**: 0.19 / 0.025 trip starts per eligible step (mine 0.17 / 0.046 with state
+  dynamics), 3,384 vehicles and p 0.79 (mine ~3.65k, 0.78), and a needed multiplier of **4.87x at 100k and
+  3.70x at 150k** on total boardings with all vehicles throttled (mine 5.4x / 4.0x in the same case,
+  5.0–6.6x / 3.6–6.2x across cases). Agreement on order of magnitude; the gap is the assumptions named.
+- **Disagreement left open**: it put today at ~1.26 boardings per resident trip (11k workers, shopping and
+  returns left out, which it flags as biased upward); I get 0.39–0.52 (57% of residents with a job or
+  school place, shopping included). If its figure were right there would be almost no share headroom and
+  34k would be further away. Its verdict: "mechanically possible, but not established"; weakest link the
+  citizen-instance count. Cheapest settling experiment (both of us): read `VehicleManager.m_vehicleCount`
+  and `CitizenManager.m_instanceCount` (action 1).
+
+
+A second blind consult on the phase-1 design (`consult2b_prompt.md` / `consult2b_out_sol.txt`; the first
+attempt, `consult2_out_sol.txt`, answered something else and was discarded) found:
+- **My claim that the splits reuse only existing paths was wrong**: the four closing legs above are new, and
+  the circulator is all new. Build notes now say so.
+- **Capacity risk on 94**: 94's stop 4 has 155 waiting; my first draft cut 94's corridor from 43 to 27 buses.
+  Waiting does not enter route choice, but abandonment after ~8 weeks does lose riders. The halves now keep
+  94's line budget (175): 29 + 17 buses.
+- **The circulator may mainly redistribute** riders from 4, 94, 245 and Red (as line 60 did to Blue in B18);
+  judge it on the combined total of those lines, not on its own count.
+- K1 (splits raise the count) and K4 (fewer buses on 4 lose nothing) came back only CONSISTENT: neither is
+  established until the before/after count exists.
+
 ---
 
 ## 5. Phasing
