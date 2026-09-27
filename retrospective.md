@@ -80,3 +80,5 @@ short list of what cost the most time.
 No read of population (citizens.count includes tourists), education/age mix, line paths, service
 capacity, owned tiles. No zone-safe road upgrade, no roundabout primitive, no unlock or cost check
 on `place-building`.
+
+- M1 (2026-09-27): reuse tmp/tampa/m1/m1.py (`clean` collision guard, `find_sites`, `road_guard` footprint check for new roads/lines) and freesites.py instead of rewriting them; pipe and power every new road before zoning; check a new line's length against the drawn loop.

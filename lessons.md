@@ -259,3 +259,41 @@
 - **Result:** only the revert separated the 142 effect from noise (Blue 141 -> 243 while line 97, 1.3 km away, also swung 31% with nothing changed). After removing a stop, /state/transit showed 493 m and target 2 vehicles for ~40 s before settling at 5,334 m; a save taken in that window caught the transient.
 - **Rule:** one change per measurement phase, first period after a change dropped, and use a far-away unchanged line as a noise control. After any stop edit, poll until lengthMeters and targetVehicleCount settle, then save.
 
+
+### 2026-09-27 M1 — the validated dry run says canPlace:true even when it hits a building
+- **Situation:** placing services with `place-building` `validate:true`.
+- **Result:** a Crematory dry run at (2665,800) returned `canPlace:true`, `toolErrors:[]` and `collidingBuildingIds:[37376]` (CheckSpace runs in test mode, so the collision is reported but not raised as an error).
+- **Rule:** the collision guard is `ok && canPlace && toolErrors==[] && collidingBuildingIds==[] && collidingSegmentIds==[]` (tmp/tampa/m1/m1.py `clean`). Never trust `canPlace` alone.
+
+### 2026-09-27 M1 — the east water outage was a missing pipe, not capacity
+- **Situation:** 26 buildings with Water along Roberts Avenue (x 3900-4260), 16 abandoned; the pipe network was one component.
+- **Action:** 5 Water Pipe pieces along the road from the nearest pipe node, plus 7 more at three smaller gaps.
+- **Result:** Water 34 -> 5 within about a game month; Abandoned 17 -> 3 as abandoned lots were replaced.
+- **Rule:** before adding pumps, measure the distance from each dry building to the nearest pipe; over ~100 m it is a coverage gap. Lay pipes along the road the buildings front.
+
+### 2026-09-27 M1 — zoning without pipes loses the first buildings
+- **Situation:** harbour-south infill painted Industrial/Office on empty blocks with no pipe along their roads.
+- **Result:** within ~3 game weeks 8 new buildings there had Water and 3 were Abandoned.
+- **Rule:** pipe (and power) every road before painting its blocks, the same as for a new district.
+
+### 2026-09-27 M1 — power poles make set-zone skip the block
+- **Situation:** NW1 power trunk nodes were put on block centres along x=1260.
+- **Result:** `set-zone` with preserveOccupied true skipped all 8 blocks around each pole (changedCells 0): the poles count as service buildings.
+- **Rule:** zone before running power lines through a new grid, or keep line nodes on block edges; if poles are the only occupants of new blocks, paint those blocks with preserveOccupied false, one block at a time.
+
+### 2026-09-27 M1 — a Power Line end 15-20 m from buildings links them
+- **Situation:** 4 shops with no powered building within 160 m.
+- **Action:** one 90 m Power Line, ends 20 m from powered shop 45997 and 14 m from shop 37376, clear of all footprints.
+- **Result:** the shops were powered within about a game day (3 had already gone Abandoned); the same pattern powered the NW1 services.
+- **Rule:** a power link does not need to touch the building; keep ends within ~15-20 m and the line clear of footprints.
+
+### 2026-09-27 M1 — the built city has almost no room for a 6x4 school
+- **Situation:** 6 more Elementary Schools for the least-covered homes.
+- **Action:** probed both sides of every non-highway road segment with a validated dry run (tmp/tampa/m1/freesites.py, ~6.5 min).
+- **Result:** 127 free lots city-wide (68 for Library 01), none inside the uncovered areas; the best 4 newly covered 19, 9, 9 and 6 homes. Elementary coverage 82.9% -> 85.8% with 6 schools.
+- **Rule:** in built-up TAmpa, coverage gains come from new districts; place schools while a grid is still empty, and do not expect infill sites.
+
+### 2026-09-27 M1 — a feeder into a one-access district detours to turn round
+- **Situation:** NW1 has one road link (node 23921) and metro 1005 is 400 m east of it on Robert Blvd; no side street lets a bus loop back.
+- **Result:** line 140 came out 4,887 m, about 1.4 km longer than the loop drawn, with no problem flag.
+- **Rule:** check line length against the drawn loop after creation; a big excess means a turnaround. Give a district a second access (or a block loop at the station) before its feeder.
