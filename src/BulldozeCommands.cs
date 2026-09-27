@@ -1,3 +1,5 @@
+using ColossalFramework;
+
 namespace SkylinesAgentBridge
 {
     public static class BulldozeCommands
@@ -24,7 +26,40 @@ namespace SkylinesAgentBridge
 
                 if (!dryRun)
                 {
-                    GameThreadHelpers.ReleaseBuilding(manager, id);
+                    // ReleaseBuilding fires UI events through ThreadHelper.dispatcher, which throws on
+                    // the main thread part-way through the release and left buildings stuck as
+                    // Created|Deleted (24712, 1621, 5177). The game's tools release on the
+                    // simulation thread, so do the same and report what actually happened.
+                    ushort buildingId = id;
+                    SimulationJob job = null;
+                    job = new SimulationJob(delegate
+                    {
+                        if (!job.BeginCommit())
+                        {
+                            return CommandResult.Fail("Timed out before the building was released.");
+                        }
+                        Building.Flags before = manager.m_buildings.m_buffer[buildingId].m_flags;
+                        // A release that threw part-way on the main thread (before this fix) left
+                        // Deleted set with the rest of the building intact, and
+                        // ReleaseBuildingImplementation returns at once for Deleted buildings, so
+                        // they could never be removed. Clear the flag and run the full release.
+                        bool recoveredStuck = (before & Building.Flags.Deleted) != Building.Flags.None;
+                        if (recoveredStuck)
+                        {
+                            manager.m_buildings.m_buffer[buildingId].m_flags &= ~Building.Flags.Deleted;
+                        }
+                        manager.ReleaseBuilding(buildingId);
+                        Building.Flags after = manager.m_buildings.m_buffer[buildingId].m_flags;
+                        return CommandResult.FromJson("{\"ok\":true,\"dryRun\":false,\"entityType\":\"building\",\"id\":" + buildingId +
+                            ",\"flagsBefore\":\"" + JsonUtil.Escape(before.ToString()) + "\"" +
+                            ",\"flagsAfter\":\"" + JsonUtil.Escape(after.ToString()) + "\"" +
+                            ",\"recoveredStuck\":" + JsonUtil.Bool(recoveredStuck) +
+                            ",\"released\":" + JsonUtil.Bool(after == Building.Flags.None) + "}");
+                    });
+                    Singleton<SimulationManager>.instance.AddAction(job.Run);
+                    CommandResult deferred = CommandResult.FromJson("{\"ok\":true,\"queued\":true}");
+                    deferred.Deferred = job;
+                    return deferred;
                 }
 
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":" + JsonUtil.Bool(dryRun) + ",\"entityType\":\"building\",\"id\":" + id + "}");
