@@ -399,7 +399,7 @@ namespace SkylinesAgentBridge
             if (request.Method == "POST" && request.Path == "/commands/bulldoze")
             {
                 string body = request.Body;
-                return RunOnGameThread(request, delegate { return BulldozeCommands.Bulldoze(body); });
+                return RunWithSimulationStep(request, delegate { return BulldozeCommands.Bulldoze(body); });
             }
 
             if (request.Method == "POST" && request.Path == "/commands/save")

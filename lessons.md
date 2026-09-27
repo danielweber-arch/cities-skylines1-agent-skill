@@ -143,3 +143,9 @@
 - **Result:** Treated as in-place level-ups of the planned buildings. Running the lot check without exclusions showed 146 no longer overlapped the planned S1 lot while 41777 did; moving S1 20 m along its road swapped 41777 for 146 and raised clearance from M1's tunnel 36766 from 12.5 m to 25.3 m.
 - **Rule:** Before demolishing, run the footprint check with no exclusions and demolish only what still overlaps. Also check the planned platform line against existing tunnels: place-building's guard ignores tunnels.
 
+
+### 2026-09-26 — bulldozing buildings on the main thread left them stuck, and the game stacked 227 houses on one lot
+- **Situation:** /commands/bulldoze called BuildingManager.ReleaseBuilding on the main thread.
+- **Result:** ReleaseBuildingImplementation sets Deleted first, then BuildingAI.ReleaseBuilding dispatches a UI event → "Already in the same thread" → everything after it (units, paths, vehicles, grid, ReleaseItem) never ran. The implementation returns at once for Deleted buildings, so the fallback could not finish it. Stuck 24712 made the game keep spawning replacement houses on its lot (227 stacked, 117 Pollution + 34 Death + 38 Abandoned entries from one lot).
+- **Fix:** bulldoze of buildings now runs on the simulation thread through SimulationJob and awaits the result (flagsBefore/flagsAfter/released); stuck-Deleted buildings are recovered by clearing Deleted and running the full release. 24712, 1621, 5177 all released (flagsAfter None).
+- **Rule:** Every game mutation that can fire events runs on the simulation thread (SimulationJob/AddAction). A problem count that jumps by 100+ at one coordinate is a stuck object, not a city-wide issue.
