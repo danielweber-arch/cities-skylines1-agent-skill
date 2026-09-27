@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Reflection;
 using System.Text;
@@ -240,6 +241,8 @@ namespace SkylinesAgentBridge
             public Segment3 Connection;
             public int ConstructionCost;
             public string Branch;
+            public List<int> CollidingSegments = new List<int>();
+            public List<int> CollidingBuildings = new List<int>();
         }
 
         private static bool NeedsPlacementCheck(BuildingInfo info)
@@ -370,6 +373,9 @@ namespace SkylinesAgentBridge
             check.WaterHeight = waterHeight;
             check.Connection = connection;
             check.ConstructionCost = constructionCost;
+            // CheckSpace marks what it collides with; report it so a caller can see what is in the way.
+            CollectBits(segmentBuffer, check.CollidingSegments);
+            CollectBits(buildingBuffer, check.CollidingBuildings);
             return check;
         }
 
@@ -388,6 +394,35 @@ namespace SkylinesAgentBridge
                 errors |= ToolBase.ToolErrors.SlopeTooSteep;
             }
             return errors;
+        }
+
+        private static void CollectBits(ulong[] buffer, List<int> ids)
+        {
+            for (int word = 0; word < buffer.Length && ids.Count < 64; word++)
+            {
+                ulong bits = buffer[word];
+                if (bits == 0UL)
+                {
+                    continue;
+                }
+                for (int bit = 0; bit < 64; bit++)
+                {
+                    if ((bits & (1UL << bit)) != 0UL)
+                    {
+                        ids.Add((word << 6) | bit);
+                    }
+                }
+            }
+        }
+
+        private static string IdList(List<int> ids)
+        {
+            string[] parts = new string[ids.Count];
+            for (int i = 0; i < ids.Count; i++)
+            {
+                parts[i] = ids[i].ToString();
+            }
+            return "[" + string.Join(",", parts) + "]";
         }
 
         private static string ErrorNames(ToolBase.ToolErrors errors)
@@ -443,6 +478,8 @@ namespace SkylinesAgentBridge
                 ",\"constructionCost\":" + check.ConstructionCost +
                 ",\"toolErrors\":" + ErrorNames(check.Errors) +
                 ",\"subBuildings\":" + (info.m_subBuildings == null ? 0 : info.m_subBuildings.Length) +
+                ",\"collidingSegmentIds\":" + IdList(check.CollidingSegments) +
+                ",\"collidingBuildingIds\":" + IdList(check.CollidingBuildings) +
                 ",\"canPlace\":" + JsonUtil.Bool(check.Errors == ToolBase.ToolErrors.None);
         }
 

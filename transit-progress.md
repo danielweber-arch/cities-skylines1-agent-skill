@@ -101,3 +101,11 @@ batches:
     - Temporary 2-stop test lines 51, 50, 196, 183, 38, 185 (plus one rolled-back create) were used to bisect the M3 failure and deleted.
   - Deviations from the plan: M2 station order changed to NO -> AP -> 1005 -> TM -> C2 -> FN (plan: AP -> 1005 -> TM -> NO -> Central-west -> FN) because Central-west is occupied (5105) and NO -> Core2 site needed a 796 m loop crossing another leg; the new order is 2,025 m of tunnel vs about 2,570 m. Core2 site moved 38 m east along road 20549 (1837.8,2296.9 instead of 1799.6,2301.2): at 1799.6 the TM -> C2 link needed a 448 m loop, at 1837.8 it is 169 m; 84 m from Core2 train station 36478. M3 S1 moved 20 m SE along its road (3032.0,1083.0) to clear M1 tunnel 36766 by 25.3 m instead of 12.5 m, swapping planned demolition 41777 for planned demolition 146. Line names are per direction (Eastbound/Westbound, Southbound/Northbound) instead of the plan's single out-and-back line.
   - Saved TAmpa b2: after M2 requested 20:23:03, mtime 20:23:06 (15,339,913 bytes); after M3 requested 20:50:42, mtime 20:50:44 (15,312,526 bytes).
+- B17 harbor move (player: "Move"):
+  - Bridge: place-building dryRun now reports collidingSegmentIds / collidingBuildingIds (CheckSpace buffers). Calibration: Harbor at (0,0) -> ShoreNotFound.
+  - Only blocker at the W1 shore was Beautification "Pier Ruins 01" 42381 -> bulldozed.
+  - New Harbor 42184 at (4078.6,-1262.0) angle -73.7, 14.4 m above water, dock connection to (4092.9,-1580.2) on lane component A. HarborAI created intercity Ship Lines to E (8607,3862), W (-8611,-74), SW (-7598,-8612) both ways.
+  - Road: Cook Street 10561 (isolated Harbor Road along the harbor front) joined to Laurel Blvd node 837 by Medium Road seg 22778 (23981 -> 837, both reused). Water: pipe seg 19118 from node 28748, new node 30049. Harbor active, no problems.
+  - Bay Ferry 224 stop 1 moved Harbor02 -> 42184 (station snap 48 m); 23322 <-> 42184, ships running, no problems.
+  - B13 revert: line 203 fell 338 -> 190 riders/wk (-44%) with the Harbor02 detour; removed stop 12 (17 stops again).
+  - Bulldozed Harbor02 31587 (+ sub 15440). Harbors now 23322, 42184.
