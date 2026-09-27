@@ -73,3 +73,25 @@
 - **Situation:** First real Metro Track piece through build-network (to pass the "Metro Track Created" milestone that gates metro lines).
 - **Result:** PlayerNetAI.CreateSegment ends with m_createPassMilestone.Unlock() → UnlockManager.CheckMilestone → ThreadHelper.dispatcher, which throws on the main thread. The segment was left half-built (end node 0 after rollback) and had to be bulldozed.
 - **Rule:** Any game call that can fire UI/unlock events must not run on the main thread. NodeHelper.CreateSegment now detaches the milestone and replays Unlock() via SimulationManager.AddAction; metro unlocked 30 s later. After any failed network call, list the segments in the area and remove orphans (endNode 0).
+
+### 2026-09-26 — per-point elevation works; solve heights from dry-run terrain, not estimates
+- **Situation:** Rail routes 2 and 3 (61 pieces, 46 elevated) on the new DLL. The plan's terrain was interpolated from samples up to 100 m apart.
+- **Action:** Dry-ran every piece at elevation 0 (startY/endY are terrain + elevation; they ignore snapping) plus 1/4, 1/2, 3/4 points, re-scanned obstacles live, then solved node heights as the max of (lower bound - grade x distance), fixed at the existing node and the platform node read after placing the station.
+- **Result:** Survey differed from the plan's estimates by up to 4.9 m (branch 23 end 170.4 vs 172.8+). Every built node matched the solve within 0.03 m. Rounding elevations to 0.5 m pushed 45 m pieces over the 8% cap (8.07-8.4%); rounding to 0.01 m fixed it. The live obstacle scan found items the plan lacked (two wind turbines, a clinic, a gravel path) and dropped ids that had churned.
+- **Rule:** Place the station first and read its platform node y. Survey, then solve. Round elevations finely on short pieces, and re-check each grade after rounding. Flag clearance at the node(s) nearest the obstacle, not at both ends of every piece that touches it.
+
+### 2026-09-26 — bulldoze can throw a transient IndexOutOfRange
+- **Situation:** Upgrading one-way spur segment 23658 in place (bulldoze keepNodes, rebuild).
+- **Result:** The bulldoze returned HTTP 500 IndexOutOfRangeException, and the segment was left untouched (no orphans). The same call 20 s later succeeded.
+- **Rule:** After a failed bulldoze, re-read the segment and the area, then retry once. Stop if it fails twice.
+
+### 2026-09-26 — a new station can open with a Water problem and shut down
+- **Situation:** Core2 36478 was placed about 80 m from the nearest water pipe. The plan only foresaw an Electricity fix.
+- **Result:** Within one game day it showed "Water, MajorProblem" and lost its Active flag. Its line (78) still ran 2/2 trains with no line problems. S, SE and SW (all near pipes) were fine.
+- **Rule:** Before placing a station, check the distance to both water and power networks, and plan the pipe along with the power line.
+
+### 2026-09-26 — keep a spur node alive: build the new link before bulldozing its last segment
+- **Situation:** Node 19499 was left with one segment (19900) after the S host segments were removed, and the plan bulldozed 19900 next.
+- **Action:** Built S link S (6096 -> 19499) first, then did the 19900 bulldoze and rebuild.
+- **Result:** 19499 was reused, with createdNodeIds [] on every call. Level crossing 25231 also survived both gates, because one rail segment always stayed on it.
+- **Rule:** Before a keepNodes bulldoze, make sure every kept node still has another segment. Build the new connection first if it would not.
