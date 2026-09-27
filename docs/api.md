@@ -529,6 +529,79 @@ Request:
 }
 ```
 
+### Placement validation (`"validate"`)
+
+Without validation, `place-building` creates the building exactly where it is told
+through `BuildingManager.CreateBuilding`, and a dry run only checks that the prefab
+exists. That skips everything the in-game building tool does: no shoreline snap,
+no harbor height rule, no dock-to-ship-lane check, no collision test. A harbor
+placed that way can sit on dry land with a dock that never reaches a ship lane.
+
+`"validate": true` runs the same checks as the game's `BuildingTool.SimulationStep`
+on the **simulation thread** (`SimulationManager.AddAction`), then places the
+building at the **adjusted** position and angle:
+
+- Shoreline and ShorelineOrGround prefabs (harbors, cargo harbors): `BuildingTool.SnapToCanal`
+  (40 m), then `TerrainManager.GetShorePos` twice within 50 m of `position`, offset
+  by the prefab's `m_placementOffset`; the angle comes from the shore direction, so
+  `angleDegrees` is ignored. Then `info.m_buildingAI.CheckBuildPosition(0, ref pos,
+  ref angle, waterHeight, elevation, ref connectionSegment, out _, out cost)`, and
+  `BuildingTool.CheckSpace(..., test: true, ...)` for collisions (test mode, so
+  nothing is released). For `HarborAI` this includes the rule `position.y - waterHeight
+  <= 32` (else `HeightTooHigh`) and `ShipDockAI.FindConnectionPath` + `TerrainManager.HasWater`
+  on the dock-to-lane line (else `CannotConnect`).
+- Other placement modes: terrain height at `position`, then `CheckBuildPosition`,
+  `CheckSpace` and the tool's slope rule (`maxY - minY > m_maxHeightOffset` gives
+  `SlopeTooSteep`). The zone-grid snap of Roadside growables is not reproduced.
+- Always: `BuildingManager.CheckLimits()` (else `TooManyObjects`).
+
+Validation is **on by default** for Shoreline and ShorelineOrGround prefabs, and
+off for everything else. Pass `"validate": false` to force the old unchecked path,
+or `"validate": true` for any prefab. Optional `"elevation"` (default 0) is the
+tool's elevation step for elevated stations.
+
+Put `position` within about 50 m of the water's edge on the side you want. With
+`"dryRun": true` nothing is placed and the response reports:
+
+```json
+{
+  "ok": true, "dryRun": true, "buildingPrefab": "Harbor",
+  "validated": true, "placementMode": "Shoreline", "branch": "shore",
+  "requested": { "x": 4300, "y": 0, "z": -1400 },
+  "position":  { "x": 4312.5, "y": 61.2, "z": -1388.0 },
+  "snapDistance": 19.1, "angleDegrees": 131.6,
+  "shoreFound": true, "canalSnap": false,
+  "waterHeight": 55.0, "heightAboveWater": 6.2,
+  "connection": { "a": { "x": 0, "y": 0, "z": 0 }, "b": { "x": 0, "y": 0, "z": 0 } },
+  "constructionCost": 0,
+  "toolErrors": [], "subBuildings": 0, "canPlace": true
+}
+```
+
+(Values illustrative.) `toolErrors` are `ToolBase.ToolErrors` names, for example
+`ShoreNotFound`, `HeightTooHigh`, `CannotConnect`, `ObjectCollision`. `connection`
+is the dock-to-ship-lane segment `CheckBuildPosition` found (null when it found
+none). `branch` is `canal`, `shore`, `shore-lost`, `no-shore`, `ground-fallback`
+or `ground`. A real call (`dryRun` false) with any tool error places nothing and
+returns `ok:false` with the same fields. On success it returns `buildingId` plus
+the same fields, and `position`/`angleDegrees` are where the building actually went.
+
+Prefabs with sub-buildings (for example `Harbor02`, the Harbor-Bus Hub) are
+refused on a real validated call: `BuildingManager.CreateBuilding` does not create
+sub-buildings (the game tool adds them one by one), so the result would be a
+partial building. The dry run still reports the check, with `subBuildings` > 0.
+
+If the simulation thread does not pick the job up within 10 s, or has not reached
+the create step 30 s after that, the job is abandoned and cannot place anything
+later; the response then says nothing was changed.
+
+Not checked: money (`NotEnoughMoney`), unlock/milestone state, sub-building
+positions (`CheckSubBuildingPosition`), and the
+`CanBeBuiltOnlyOnce` monument rule beyond what `CheckBuildPosition` itself reports.
+`CheckBuildPosition` can show or hide the game's tutorial placement hints, as
+hovering the tool does. `GET /prefabs/buildings` lists each prefab's
+`placementMode` and `ai` so you can tell which prefabs validate by default.
+
 ## POST /commands/move-building
 
 Recreates an existing building at a new position with the same prefab and
