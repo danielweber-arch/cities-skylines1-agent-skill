@@ -5,9 +5,15 @@ Style: Transit-oriented core
 Layout: one Medium Road spine ("Station Avenue") from the north highway stubs east to a rail station on the mainline; densest zoning within 400 m of stations, RL outward; later a metro trunk under the river to the SW bank and a second mainline station in the south
 Industry: generic, small, north of the core beside the highway interchange (160 m gap, offices as buffer once unlocked); sustainability first (wind/solar, no coal)
 Must have: power, water, sewage, garbage, health, fire, police, education to "highly educated" (elementary + high school + university coverage), deathcare, parks/playgrounds (youth), tourism hooks at stations, buses first then train/metro
-Avoid: jobs zoned ahead of homes; zoning before pipes and power; sewage upstream of the intake; placing buildings the game has not unlocked; >80% of cash committed at once
+Avoid: jobs zoned ahead of homes; zoning before pipes and power; sewage upstream of the intake; placing buildings the game has not unlocked; >80% of cash committed at once; ANY residential, commercial, industrial or office zoning inside Central Park (see Protected areas)
 Save cadence: overwrite the single working save `Portville` after every verified step (NOT per-phase saves); confirm the file's mtime is newer than the request before announcing
 Map: new map, highways + mainline only | Save file: Portville | Started: 2026-09-27
+
+## Protected areas
+
+### Central Park [player directive 2026-09-29]
+Preserve and expand it. Inside its boundary every zone cell stays `Unzoned`: no R, C, I or Office, from any command, stager, repair tool or the chat assistant. No roads through it, no demolition of its park buildings, metro only underneath, no polluter within 300 m. Full rules and the expansion steps: `portville-phase4-plan.md` §1.
+- Boundary: NOT YET RECORDED. Phase 4 step CP0 records it here (polygon corners, edge segment ids, park building ids) before any other Phase 4 command.
 
 ## Research summary
 - Reused from city-ashford.md: 80 m grid spacing (16 m road + 2 x 32 m zone depth); `Basic Road` ~₡40 per 8 m cell, `Medium Road` ~₡60 per cell [E]; start cash ₡70k in vanilla [E]; R:I:C early block ratio ~5:2:1; residential chunks <= 150 cells; industry >= 2 blocks from housing.

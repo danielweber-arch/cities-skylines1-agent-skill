@@ -3,6 +3,16 @@
 Findings and follow-ups. `[x]` means fixed and verified in this repo; the rest are real but
 deliberately out of scope, with enough context to pick up cold.
 
+## Open — Central Park protection (2026-09-29)
+
+- [ ] **No district-bounds read.** The bridge lists district names (`/state/policies`) but not the
+  cells a district covers, so the Central Park boundary in `city.md` is recorded by hand (edge
+  roads plus the player's confirmation). A read-only `/state/districts` returning each district's
+  cell bounds from `DistrictManager.m_districtGrid` would let the zoning audit run by itself.
+- [ ] **Zoning tools have no exclusion zones.** `repair-zone-clusters` (`fillUnzoned` defaults to
+  true) and the RL stager `tmp/portville/p2/stager.py` can paint inside Central Park. Give both a
+  polygon exclusion (or refuse cells inside protected areas in `set-zone`) before they run again.
+
 ## Fixed — macOS port (branch `macos-port`)
 
 - [x] **Save directory was Windows-only** — `src/SaveCommands.cs:105`

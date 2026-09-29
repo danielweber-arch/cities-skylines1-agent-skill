@@ -637,6 +637,7 @@ Noted, not yet acted on: NR/CS and CS/SF district boxes overlap (x 280..1300, z 
 - "Have highways and retail pads beside it like in Dallas TX": limited-access highways with one-way frontage roads, slip ramps, U-turns at interchanges, and commercial retail pads off the frontage roads backed by collectors. Builder: tmp/portville/hwy/.
 - "Use the industrial space I have built as industrial and build/connect off of that": the player's industry east of the rail (x ~2030-2424, z ~340-686, Large Road with Median, beside Nuclear 31187 / Solar 45983) is the industrial core; extend it there with a direct truck route to a highway and a Cargo Train Terminal on the mainline (supersedes the E1 Cargo Center site in §3.2 where they conflict).
 - "Put rail systems in place now for connectivity": Central Station + a second passenger station + the cargo terminal are built now, ahead of the Train unlock (bridge placement does not check unlocks); lines open at unlock. Builder: tmp/portville/rail/.
+- "Make sure phase 4 preserves and expands upon Central Park. Do not put any residential/commercial/industrial zoning in Central Park." (2026-09-29): Central Park is protected. No zoning of any kind inside it, from any tool; it grows outward in Phase 4. Rules and steps: `portville-phase4-plan.md` §1; boundary in `city.md` → Protected areas.
 - "You can buy any land you find strategic": a /state/areas + /commands/unlock-area bridge endpoint is being added; it goes live after one game restart (orchestrator's call, taken at a quiet point with a verified save first). NE tile first (§0).
 
 ## §10 P4 access-first plan (draft)
@@ -1010,3 +1011,7 @@ Locked on their own milestones, so they arrive as population and the special con
 Player, in chat: look at congestion as the city grows and fix access when the cause is local.
 
 2026-09-27 22:06 game time, population 25,772, city flow 84. Sixteen segments were at density 60 or more. The worst is still the northbound ramp 27688 at 100, merging into Stephen Harris Avenue through the shops. Left as it was. Riverside East Forecourt 32290 is 95 on a 25 m basic road into large Walker Street. A medium-road replacement dry-ran, but shop 38198 sits 16 m from the north node, so widening it was not done. Alexander Street 15335 at 94 is an ordinary four-way. No change this pass.
+
+## §11 Phase 4 plan
+
+Superseded for Phase 4 by `portville-phase4-plan.md` (2026-09-29): §6 P4 and the §10.13 "Later (Phase 4)" list, updated with what is already built, plus the Central Park directive (§9).

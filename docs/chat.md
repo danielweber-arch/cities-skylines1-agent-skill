@@ -132,7 +132,7 @@ For each player message, the script:
 1. Sets the status to `thinking`.
 2. Runs `claude -p` from the repo root. The prompt holds the player's text, the camera
    position, the selected entity, and the game time. It tells Claude it is the in-game
-   assistant, has it read `CLAUDE.md`, `lessons.md`, `knowledge.md`, and `transit.md`,
+   assistant, has it read `CLAUDE.md`, `city.md`, `lessons.md`, `knowledge.md`, and `transit.md`,
    points it at the `cs1_*` tools, and has it post progress with
    `./scripts/chat-bridge.sh say update "..."`.
 3. Posts Claude's final message as the `reply` (`inReplyTo` set), then sets the status
