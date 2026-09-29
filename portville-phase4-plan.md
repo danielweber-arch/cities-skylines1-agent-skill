@@ -71,7 +71,8 @@ Central Park is a **district** in the live save, painted just east and northeast
    - the in-game chat assistant.
 
    Any circle a zoning command paints must lie wholly outside the boundary: center-to-boundary distance must exceed the radius.
-3. **Nothing inside the park is removed or shrunk:** no roads through it, no demolition of its park buildings, and no service, industrial or transit building on its land. Pedestrian paths, park and plaza prefabs, and trees and decoration are allowed.
+3. **Nothing inside the park is removed or shrunk:** no demolition of its park buildings, and no service, industrial or transit building on its land. Pedestrian paths, park and plaza prefabs, and trees and decoration are allowed.
+   - **Roads, as in NYC:** no surface car road crosses the park. The only car roads inside it are the four **sunken transverse roads** (§1.4). The loop drives are car-free pedestrian paths, as NYC's have been since June 27, 2018. The perimeter avenues run outside the boundary.
 4. **Metro may run under the park, not on it.** Tunnels underneath are fine. Surface entrances go on the park's edge roads, outside the boundary.
 5. **Pollution buffer (extends §10.11):** no industry, landfill, incinerator or power plant within 300 m of the boundary [E: the same spacing the plan uses for homes].
 6. **Before any dry run touches cells inside the boundary, stop.** Report it to the player and wait.
@@ -110,7 +111,7 @@ Central Park is a **district** in the live save, painted just east and northeast
 
   Validate every lot first with `validate:true`. Paths end at road edges, lane-linked (the promenade lesson, progress 2026-09-27 21:4x).
   - Accept when every placement is Active with no problems.
-- **CP2 Grow outward.** Survey a 1-block ring (80 m) around the boundary with `/state/growables` and `/state/zones`, and add to the park the lots that are unzoned or empty.
+- **CP2 Grow outward**, now toward the NYC replica footprint in §1.4. Survey the footprint with `/state/growables` and `/state/zones`, and add to the park the lots that are unzoned or empty.
   - Proposed target: at least one 80 m block on each side that has free land [E; set after CP0 measures the park].
   - Occupied homes or shops are taken only with the player's OK in chat, as in the City Hall precedent.
   - Update the boundary polygon in `city.md` after each addition.
@@ -123,6 +124,99 @@ Central Park is a **district** in the live save, painted just east and northeast
   - Keep sidewalks continuous from the nearest station.
   - Accept when every entrance is within 300 m of a stop and walkable to it (pedestrian lane links read from `/state/networks`).
 - **Edge frontage (outside the park, allowed).** `ResidentialHigh` and `Office` may face the park from across its edge roads, within the zoning rules in §5 of the master plan. That raises land value next to the park without putting any zoning in it.
+
+### 1.4 Central Park as a replica of New York's Central Park [P, 2026-09-29]
+
+> "Model Central Park after Central Park in NYC. Make it a very similar replica."
+
+This section replaces CP2's "one block on each side" growth target. Central Park grows into a scaled copy of Manhattan's Central Park, keeping its shape, layout and landmarks. CP1–CP4 still apply, and the §1.1 hard rules still hold.
+
+**The real park** [W, sources at the end of this section]:
+- **Size:** 843 acres (about 3.4 km²), about 2.5 mi long (≈ 4.0 km) and 0.5 mi wide (≈ 0.8 km), so roughly **5 : 1**.
+- **Edges:** 59th Street (south) to 110th Street (north), and Central Park West (west) to Fifth Avenue (east).
+- **Transverse roads:** four sunken roads at **65th, 79th, 86th and 97th** carry cross-town traffic below the park's surface.
+- **Drives:** East, West, Center and Terrace Drives have been car-free since June 27, 2018.
+
+**Scale and siting (decided at CP0, from the live survey):**
+- **Scale factor k:** the largest of **1 : 1** (4,020 × 800 m), **1 : 1.5** (2,680 × 535 m) or **1 : 2** (2,010 × 400 m) whose rectangle fits on open land without demolishing developed blocks. The screenshots show large open land east and south-east of the city inside the highway loop [S]. Keep the 5 : 1 ratio whatever the scale.
+- **Siting:** the existing Central Park district is the **south end**. Downtown District sits against it the way Midtown sits against 59th Street. The long axis runs away from downtown across open land. Record the south-west corner S and the unit vectors u (south → north along the axis) and v (west → east) in `city.md`.
+- **Street → position:** Manhattan streets run about 20 per mile, so one street ≈ 80 m. A feature at street n, at a fraction f of the width from the west edge (0 = CPW, 1 = Fifth Ave), goes at
+
+  **P = S + u · (n − 59) · 80 · k + v · f · 800 · k**
+
+  with P in game metres. Check every lot with a `validate:true` dry run before placing it.
+
+**Layout, south to north** (the in-game stand-ins are the vanilla prefabs this repo has already used; check each against `/prefabs/buildings` live):
+
+| NYC feature | Street, side | Stand-in | Notes |
+|---|---|---|---|
+| Columbus Circle (SW corner), Grand Army Plaza (SE corner) | 59th, W / E | Roundabouts on the perimeter roads | Outside the boundary; they help traffic too |
+| The Pond, Central Park Zoo, Wollman Rink | 59th–65th, E [U] | Pond: see water below. Zoo: `Expensive Park`. Rink: a sports prefab if unlocked [U] | |
+| **65th St transverse** | 65th, full width [W] | Sunken road (tunnel prefab) | Car road, below grade |
+| Sheep Meadow | ~66th–69th, W [W: west side] | Open lawn: leave the land empty and unzoned, with a path ring | |
+| **The Mall / Literary Walk** | 66th–72nd, E [W] | Straight `Pedestrian Pavement` promenade, tree-lined (trees by the player) | |
+| **Bethesda Terrace and Fountain** | 72nd, mid-E [W] | `Regular Plaza` + a fountain prefab (fountain lots were validated before [M]) | Opens onto the Lake |
+| **The Lake**, **Bow Bridge** | ~72nd–78th, mid [W: between the 66th and 79th transverses; Bow Bridge at 74th] | Water (see below); Bow Bridge = `Pedestrian Elevated` over it | |
+| Strawberry Fields | 72nd, W [W] | `Regular Park` (memorial garden) | |
+| Conservatory Water | 74th, E [W] | Fountain or `Regular Plaza` (model-boat pond) | |
+| **The Ramble** | ~73rd–79th, mid [W: north of the Lake] | Woodland, planted by the player with the tree tool; gravel paths | |
+| **79th St transverse** | 79th [W] | Sunken road | |
+| **Belvedere Castle** on Vista Rock | ~79th, mid [W: official weather station since 1919] | `Observatory` unique when unlocked (§10.16), on the highest point; `Regular Plaza` placeholder until then | |
+| Turtle Pond, Delacorte Theater | ~79th–80th, mid [U] | Small water; `Theatre` unique when unlocked | |
+| **Great Lawn** | ~80th–85th, mid [W: 55 acres] | Open lawn (empty, unzoned); `Regular Playground`s at the edges as ballfields | |
+| Metropolitan Museum of Art | ~80th–84th, E edge [U] | `Modern Art Museum` unique | On the east edge, facing the Fifth Ave stand-in |
+| **86th St transverse** | 86th [W] | Sunken road | |
+| **The Reservoir** + running track | ~86th–96th, full width [W: 106 acres] | Water (see below), ringed by a `Pedestrian Gravel` or `Pedestrian Pavement` loop | The largest single feature |
+| **97th St transverse** | 97th [W] | Sunken road | |
+| North Meadow | ~97th–102nd, mid [U] | Open lawn + playgrounds | |
+| North Woods | ~101st–110th, W [U] | Woodland (tree tool) | |
+| **Conservatory Garden** | ~104th–106th, E [W: NE corner, 6 acres, the only formal garden] | `Botanical garden` | |
+| Harlem Meer | ~106th–110th, E [W: NE corner] | Water (see below) | |
+| Frederick Douglass Circle (NW corner) | 110th, W [U] | Roundabout on the perimeter | Outside the boundary |
+
+**Loop drives (car-free):** one path loop runs just inside the boundary, like East and West Drives, as `Pedestrian Pavement`. Paths end at road edges and are lane-linked (the promenade lesson). The transverse roads pass *under* the path loop.
+
+**Perimeter, outside the boundary:**
+- A Fifth Ave stand-in on the east edge and a Central Park West stand-in on the west edge: `Medium Road` or larger, per the road hierarchy. South and north edge roads stand in for 59th and 110th.
+- Frontage across those roads: `ResidentialHigh` and `Office` only, which is allowed and raises land value. Never inside the park.
+
+**Transit (CP4, NYC-style):** a metro line under the west edge road, with stations at the SW corner (Columbus Circle), near 81st (west, by the museum side), near 96th, and at 110th, plus a bus on the Fifth Ave stand-in. Every entrance sits outside the boundary.
+
+**What the bridge cannot do (the player's part)** [U until tried]:
+1. **Water.** The Lake, the Reservoir, the Pond, Turtle Pond and Harlem Meer need terraforming. The bridge has no terrain or water commands. The player digs them with the in-game landscaping tool; a water body needs a water source. Until then, mark each outline with a path ring and leave the ground as lawn.
+2. **Trees.** The Ramble and the North Woods need the player's tree brush.
+3. **Sunken transverses.** If `/prefabs/roads` lists no tunnel or sunken road the bridge can build, leave the transverses out for now. Never build them at ground level through the park.
+4. **Sub-building uniques.** Some uniques refuse bridge placement, as the Airport did. The player places those.
+
+**Build order:**
+1. Pin S, u, v and k at CP0 (`city.md`).
+2. Build the perimeter roads with their corner roundabouts, then the path loop.
+3. Mark the lawns: unzone them and leave them empty.
+4. Place the Mall, Bethesda, Strawberry Fields and Conservatory Water / Garden.
+5. The transverses, if possible.
+6. The water outlines, for the player to dig, and the tree areas, for the player to plant.
+7. Landmark uniques as they unlock.
+8. Transit last.
+
+Save after each step. Capture the park (`size` = 1.2 × its length, mode `None`) after steps 2, 4 and 7, and compare against a Central Park map.
+
+**Accept when:**
+- the boundary rectangle has the 5 : 1 shape at the chosen k;
+- it has 0 zoned cells;
+- the loop path is one pedestrian component;
+- every table row is either built or listed as player work in `TODOS.md`;
+- every perimeter station is within 300 m of a park entrance.
+
+**Sources:**
+- size, bounds and dimensions: [centralpark.com](https://www.centralpark.com/visitor-info/where-is-central-park/), [Britannica](https://www.britannica.com/place/Central-Park-New-York-City);
+- Reservoir and Great Lawn: [NYC Parks](https://www.nycgovparks.org/parks/central-park/highlights/6455);
+- Belvedere weather station: [Wikipedia: Belvedere Castle](https://en.wikipedia.org/wiki/Belvedere_Castle);
+- Conservatory Garden: [Wikipedia: Conservatory Garden](https://en.wikipedia.org/wiki/Conservatory_Garden);
+- feature streets: [centralpark.org map](https://centralpark.org/central-park-map/), [Wikipedia: The Ramble and Lake](https://en.wikipedia.org/wiki/The_Ramble_and_Lake);
+- transverse roads: [michaelminn.net](https://michaelminn.net/newyork/parks/central-park/bridges/transverse-roads/index.html);
+- car-free drives: [Central Park Conservancy](https://www.centralparknyc.org/press/car-free-park), [NYC Mayor's Office](https://www.nyc.gov/office-of-the-mayor/news/206-18/mayor-de-blasio-central-park-world-s-most-iconic-greenspace-will-become-permanently).
+
+Tags: [W] means confirmed in those sources; [U] means from general knowledge, not yet checked.
 
 ## 2. Phase 4 workstreams (in order; each ends with a save and an mtime check)
 

@@ -638,6 +638,7 @@ Noted, not yet acted on: NR/CS and CS/SF district boxes overlap (x 280..1300, z 
 - "Use the industrial space I have built as industrial and build/connect off of that": the player's industry east of the rail (x ~2030-2424, z ~340-686, Large Road with Median, beside Nuclear 31187 / Solar 45983) is the industrial core; extend it there with a direct truck route to a highway and a Cargo Train Terminal on the mainline (supersedes the E1 Cargo Center site in §3.2 where they conflict).
 - "Put rail systems in place now for connectivity": Central Station + a second passenger station + the cargo terminal are built now, ahead of the Train unlock (bridge placement does not check unlocks); lines open at unlock. Builder: tmp/portville/rail/.
 - "Make sure phase 4 preserves and expands upon Central Park. Do not put any residential/commercial/industrial zoning in Central Park." (2026-09-29): Central Park is protected. No zoning of any kind inside it, from any tool; it grows outward in Phase 4. Rules and steps: `portville-phase4-plan.md` §1; boundary in `city.md` → Protected areas.
+- "Model Central Park after Central Park in NYC. Make it a very similar replica." (2026-09-29): layout in `portville-phase4-plan.md` §1.4.
 - "You can buy any land you find strategic": a /state/areas + /commands/unlock-area bridge endpoint is being added; it goes live after one game restart (orchestrator's call, taken at a quiet point with a verified save first). NE tile first (§0).
 
 ## §10 P4 access-first plan (draft)
