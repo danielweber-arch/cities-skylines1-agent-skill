@@ -1,29 +1,64 @@
-# Portville Phase 4 plan: both banks, one city (43k → 55k), Central Park kept and grown
+# Portville Phase 4 plan: finish P4 (52k → 55k+), Central Park kept and grown, set up P5
 
-Written 2026-09-29 from `portville-master-plan.md` (§6 P4, §10) and `progress-portville.md`. The game was not running, so nothing here is measured live today. Tags: [M] measured earlier in the progress log, [E] estimate, [U] unverified, [P] player directive.
+Revised 2026-09-29 from the player's five in-game screenshots (game date 13/10/2049), `portville-master-plan.md` (§6 P4, §10) and `progress-portville.md`. The bridge was not reachable when this was written. The first builder session re-measures §0 live before acting, and `scripts/phase4-orchestrator.sh` can refresh the whole plan from a live snapshot.
+
+Tags:
+- [S] read from the player's screenshots (no ids or coordinates);
+- [M] measured earlier in the progress log;
+- [E] estimate;
+- [U] unverified;
+- [P] player directive.
 
 This is the master plan's §6 P4 ("Both banks, one city"), updated with what is already built and the §10.13 "Later (Phase 4)" list. Where this file and §6/§10 disagree, this file wins for Phase 4.
 
-## 0. Where Phase 4 starts [M, progress-portville.md 2026-09-28]
+## 0. Where Phase 4 starts
 
-- Population 42,966 (game 2045-12-11). Traffic flow 67%; target ≥ 75%. 31 road segments at 80–100% density.
-- All 12 transit lines Complete.
-- Already built:
-  - **M1 west:** Central → West Gate → Waterfront → Westbank → Airport site. Lines 30/173 run 8/8 trains over 9,246 m.
-  - **Harbor bus:** H1, line 102.
-  - **Westbank Homes grid:** 1,910 high-density cells, served by the WB Downtown bus (line 171).
-  - **Downtown and the waterfront:** City Hall, SeaWorld, the waterfront promenade.
-- Open:
-  - **Airport building:** not placed. The bridge refuses sub-building prefabs, so the player places it.
-  - **Isolated metro station tracks:** 19205, 19709, 27014 and 36009.
-  - **Traffic hotspots:** the Holmes / Stephen Harris corridor (segments 589, 6129, 11388) and the Riverside East station approach (15491, 32290). The Riverside East widening is blocked by a shop (§10.17).
-  - **Not started:** M2, IC Westbank, the NE extension, and the Westbank service set.
+### 0.1 Live state, game 13/10/2049 [S]
+
+- **Population:** 51,907, rising (+79 in the bar). The §6 P4 target of 55k is about 3k away. Phase 4 therefore finishes P4's quality goals and lays the ground for P5, rather than chasing population alone.
+- **Money:** the treasury shows **∞** (unlimited money), and the weekly balance reads **−₡267,997**. Money does not block building. The deficit is still a sign of overbuilt or overfunded services, so check it once (workstream J).
+- **Districts** (named on the map):
+  - **Downtown District**;
+  - **Central Park**, just east and northeast of Downtown District;
+  - **Sheffield Park**, north, by the rail curve;
+  - **Vermont Heights**, south-east. Only its label and policy icons show, with no buildings: it is **named but still empty land**.
+- **Transit, residents per week:**
+
+  | Mode | Residents | Tourists |
+  |---|---|---|
+  | Bus | 2,373 | 190 |
+  | Metro | 923 | 153 |
+  | Train | 665 | 170 |
+  | Ship | **0** | 0 |
+  | Air | 32 | 69 |
+  | **Total** | **3,993** | **582** |
+
+  Ships carry nobody, and metro still trails bus by 2.6×.
+- **Education:** uneducated 16%, educated 23%, well educated 10%, highly educated 51%. Libraries are badly underused: **147 users against capacity 1,100**.
+- **Pollution view:** a large ground-pollution area over the NW industrial cluster. A **second polluted spot sits beside the south housing grid**, next to a building with a warning icon. That breaks the "no polluter next to homes" rule (master plan §10.11).
+- **Traffic view:** many arterials in the dense grids show red and orange. Treat flow as still below the 75% target until it is measured live (it was 67% on 2045-12-11 [M]).
+- **In-game chat panel:** reads **"AI offline – no agent is watching the chat."** The chat loop is not running.
+- **Map:** a large open area east and south-east of the city, inside the highway loop, is unbuilt. That is where Vermont Heights and Central Park's expansion can go.
+
+### 0.2 Built earlier [M, progress-portville.md up to 2026-09-28]
+
+- **M1 west:** Central → West Gate → Waterfront → Westbank → Airport site. Lines 30/173 run 8/8 trains over 9,246 m.
+- **Harbor bus:** H1, line 102.
+- **Westbank Homes grid:** 1,910 high-density cells, served by the WB Downtown bus (line 171).
+- **Downtown and the waterfront:** City Hall, SeaWorld, the waterfront promenade.
+- **Still open then:**
+  - the Airport building (the player places it; the bridge refuses sub-building prefabs);
+  - the isolated metro station tracks 19205, 19709, 27014 and 36009;
+  - the Holmes / Stephen Harris hotspots (589, 6129, 11388) and the Riverside East approach (15491, 32290);
+  - M2, IC Westbank, the NE extension, and the Westbank service set.
+
+The first live read confirms or clears each of these.
 
 ## 1. Central Park: player directive [P, 2026-09-29]
 
 > "Make sure phase 4 preserves and expands upon Central Park. Do not put any residential/commercial/industrial zoning in Central Park."
 
-Central Park is in the live Portville save. None of the repo files names it or records its boundary, so step CP0 below records it before any other Phase 4 command runs.
+Central Park is a **district** in the live save, painted just east and northeast of Downtown District [S]. The land inside and around it is mostly open, and a few buildings stand near its label. The bridge reads district names but not district paint, so step CP0 below records the boundary before any other Phase 4 command runs.
 
 ### 1.1 Hard rules (every command, every builder, every phase from now on)
 
@@ -43,10 +78,11 @@ Central Park is in the live Portville save. None of the repo files names it or r
 
 ### 1.2 CP0 Locate and fence (first step of Phase 4; reads plus unzoning only)
 
-1. **Find it.** Try these in order until one names it:
-   - `GET /state/policies` → `districts[]`, for a district whose `name` contains "Central Park";
-   - `GET /state/facilities`, for park buildings named or placed there;
-   - failing both, ask the player in chat to open Central Park's info panel and send "this is Central Park". The message carries the selected entity and its position (`selected`, `camera`).
+1. **Find it.** `GET /state/policies` → `districts[]` gives the id of the district named "Central Park". For its position:
+   - ask the player in chat to click the district name and send "this is Central Park". The message carries the district's name location (`selected`);
+   - or capture around the Downtown District's east edge and find the label.
+
+   Then capture its area at `size` 1200 in modes `None` and `LandValue` to see the painted extent.
 2. **Record the boundary** in `city.md` under "Protected areas":
    - a polygon of world (x, z) corners, confirmed by the player in chat;
    - the edge road segment ids;
@@ -102,13 +138,29 @@ Every workstream first checks its footprint against the Central Park boundary an
 | F | **M2**, North Gate → Central-M2 (CM2 on Station Road) → Riverside East, in §10.9 step 6 order: the L9 crossing pieces first, then watch M1 for a game day. | §10.3, §10.9 | M2 Complete, riders > 0; M1 shows no problems through the day |
 | G | **NE tile.** Buy the tile (`/commands/unlock-area`, §9), then the North station on the mainline, then roads before any station (§10.13), then the second Culture Quarter (§3.8 NE extension). | §3.2, §3.8, §9 | North station on a Complete train line; the NE roads have 0 disconnected components |
 | H | **Bus restructure** per §10.6, each change as its trunk opens (M2, NE); measure 4 periods before and after (the m1fix method). | §10.6 | No bus with stops within 300 m of two stations on the same trunk |
+| J | **Budget sanity** [S: −₡267,997/week]. Read `/state/economy`, find the three largest expense lines, trim service budgets over 100% where coverage is already full, and check tax rates. Money is unlimited, so this is housekeeping. | §0.1 | Weekly balance improves; no service coverage lost |
+| K | **Chat online** [S: "AI offline"]. Run `./scripts/install-chat-bridge-agent.sh install` on the Mac. | §0.1 | Panel shows the agent listening; a test message gets a reply |
+| L | **Pollution beside south homes** [S]. Find the polluter by the south grid (`/state/facilities` near the polluted spot, likely a landfill or an industrial lot) and move or replace it (§10.11). Also check the NW industrial pollution against the nearest homes. | §10.11 | No home inside a pollution area; no pollution problem icons on homes |
+| M | **Ships at 0 riders** [S]. Read `/state/transit` for passenger ship lines. If none exists, a 0 is expected; the Harbor then relies on H1 and M1. If one exists, fix its route or stops when it is broken, or delete it when it duplicates M1/H1. | §0.1 | Every remaining line has riders > 0 |
+| N | **Libraries and education** [S: 147/1,100]. Libraries are placed where few people reach them: put `Library 01` at stations with the highest ridership (§4) instead of adding capacity. | §4 | Library users rise; highly educated share ≥ 51% |
+| O | **Vermont Heights, P5 groundwork** [S: named, empty]. Plan its streets and transit before zoning (§10.13): a spine road from the nearest arterial, water, power, one bus feeder to the nearest metro or train stop. Mixed RH/RL/C by the zoning rules. It must not touch Central Park or its 300 m pollution buffer. | §5, §6 P5 | Roads with 0 disconnected components; pipes and power in; the first cells zoned only after the feeder runs |
 | I | **Utilities check.** Add a 2nd `Solar Power Plant` or `Advanced Wind Turbine`s only if electricity use is above 70%; `Fusion Power Plant` replaces Nuclear when unlocked (player). | §4 P4 | No Electricity or Water problems |
 
-Order: A, then B and C (C waits on the player), then D and E, then F, then G, with H and I following as their triggers occur. CP1–CP4 run alongside, in quiet periods between the bigger builds.
+Order:
+1. K (so the chat works while the rest runs), then A (Central Park CP0).
+2. L and B.
+3. C (waits on the player), D and M.
+4. E, then F.
+5. N and J in quiet periods.
+6. O (Vermont Heights) and G (the NE tile) last, as P5 groundwork. O comes first because its land is already owned and empty.
+7. H and I as their triggers occur.
+
+CP1–CP4 run alongside, in quiet periods between the bigger builds.
 
 ## 3. Phase 4 acceptance (adds to §6 P4)
 
-- Population ≥ 55,000; 0 disconnected local road components.
+- Population ≥ 55,000 (51,907 on 13/10/2049 [S]); 0 disconnected local road components.
+- No home inside a pollution area; every transit line has riders > 0.
 - Traffic flow ≥ 75%.
 - Airport and Harbor each ≤ 1 transfer to the Promenade (line stop lists); modal share ≥ 10%.
 - **Central Park:**
