@@ -151,8 +151,9 @@ The loop is built to run unattended:
 
 - If the game is not running, it waits for the bridge instead of exiting.
 - If the game restarts (chat ids reset to 1), it notices and reads the inbox from the start.
-- A turn that runs longer than `--turn-timeout` (default 900 s) is stopped, along with
-  its child processes, and the player gets a reply saying so.
+- Long turns are never cut off. A turn that shows no activity for `--stall-timeout`
+  (default 600 s), or that crashes, is stopped and resumed in the same conversation with
+  a "continue where you left off" prompt, up to `--max-restarts` (default 5) times.
 
 ### Always on (macOS)
 
@@ -164,7 +165,7 @@ The loop is built to run unattended:
 ./scripts/install-chat-bridge-agent.sh uninstall
 ```
 
-Options after `install` are passed through (`install --model sonnet`). Run `install` from
+Options after `install` are passed through (`install --model sonnet --stall-timeout 900`). Run `install` from
 a terminal where `claude`, `jq`, `curl` and `npx` work; the agent keeps that PATH. Do not
 also run an interactive session that watches the chat, or both will answer.
 

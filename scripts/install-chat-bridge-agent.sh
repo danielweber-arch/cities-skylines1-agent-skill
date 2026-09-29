@@ -11,7 +11,7 @@
 #        ./scripts/install-chat-bridge-agent.sh logs
 #
 # Options after `install` are passed to chat-bridge.sh, e.g.
-#   ./scripts/install-chat-bridge-agent.sh install --model sonnet --turn-timeout 1200
+#   ./scripts/install-chat-bridge-agent.sh install --model sonnet --stall-timeout 900
 #
 # The agent runs with the PATH of the shell that installs it, so run `install` from a
 # terminal where `claude`, `jq`, `curl` and `npx` all work. Re-run `install` after moving

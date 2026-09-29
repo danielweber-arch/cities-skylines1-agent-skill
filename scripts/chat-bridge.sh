@@ -19,7 +19,10 @@
 #                           by default only messages typed in the game panel are answered
 #   --new-session           start a fresh Claude conversation instead of resuming the last one
 #   --wait SECONDS          long-poll length per request, 1..30 (default: 25)
-#   --turn-timeout SECONDS  stop a Claude turn that runs longer than this, >= 60 (default: 900)
+#   --stall-timeout SECONDS restart a Claude turn that shows no activity for this long, >= 30
+#                           (default: 600). Turns that keep working are never cut off.
+#   --max-restarts N        stalled or crashed turns resumed per message before giving up
+#                           (default: 5)
 #   -h, --help              show this help
 #
 # The `say` and `status` forms post one line to the panel and exit; the headless Claude uses
@@ -30,7 +33,8 @@
 #
 # The loop is meant to run unattended: it waits for the game instead of exiting when the
 # bridge is down, picks up again after the game restarts, acknowledges messages that arrive
-# while Claude is busy, and stops any turn that exceeds --turn-timeout. To keep it running
+# while Claude is busy, and recovers a turn that stalls or crashes by resuming the same
+# conversation where it left off (long turns that keep working are never cut off). To keep it running
 # in the background on macOS (restarted on crash and at login), use
 # ./scripts/install-chat-bridge-agent.sh.
 #
@@ -43,7 +47,8 @@ PERMISSION_MODE="dontAsk"
 ACCEPT_API=0
 NEW_SESSION=0
 WAIT=25
-TURN_TIMEOUT=900
+STALL_TIMEOUT=600
+MAX_RESTARTS=5
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 
 usage() { awk 'NR <= 2 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0" | sed '${/^$/d;}'; }
@@ -108,7 +113,8 @@ while [ $# -gt 0 ]; do
         --accept-api)      ACCEPT_API=1 ;;
         --new-session)     NEW_SESSION=1 ;;
         --wait)            need $# "$1"; WAIT="$2"; shift ;;
-        --turn-timeout)    need $# "$1"; TURN_TIMEOUT="$2"; shift ;;
+        --stall-timeout)   need $# "$1"; STALL_TIMEOUT="$2"; shift ;;
+        --max-restarts)    need $# "$1"; MAX_RESTARTS="$2"; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -118,8 +124,9 @@ BASE="${BASE%/}"
 
 case "$WAIT" in ''|*[!0-9]*) echo "--wait must be a whole number of seconds" >&2; exit 2 ;; esac
 [ "$WAIT" -ge 1 ] && [ "$WAIT" -le 30 ] || { echo "--wait must be 1..30" >&2; exit 2; }
-case "$TURN_TIMEOUT" in ''|*[!0-9]*) echo "--turn-timeout must be a whole number of seconds" >&2; exit 2 ;; esac
-[ "$TURN_TIMEOUT" -ge 60 ] || { echo "--turn-timeout must be at least 60" >&2; exit 2; }
+case "$STALL_TIMEOUT" in ''|*[!0-9]*) echo "--stall-timeout must be a whole number of seconds" >&2; exit 2 ;; esac
+[ "$STALL_TIMEOUT" -ge 30 ] || { echo "--stall-timeout must be at least 30" >&2; exit 2; }
+case "$MAX_RESTARTS" in ''|*[!0-9]*) echo "--max-restarts must be a whole number" >&2; exit 2 ;; esac
 case "$PERMISSION_MODE" in
     bypassPermissions) log "warning: bypassPermissions lets the headless Claude run any command a player message talks it into." ;;
 esac
@@ -282,23 +289,39 @@ Entity selected in game when sent ("this"/"here" usually means it): ${selected}
 EOF
 }
 
-run_limited() {
-    # $1 output file, rest: claude arguments. Runs one claude invocation, stopping it after
-    # TURN_TIMEOUT seconds so a stuck turn can never freeze the chat. Returns claude's exit
-    # code, or 124 if it was stopped.
+run_watched() {
+    # $1 output file, rest: claude arguments. Runs one claude invocation with streaming
+    # output (one JSON event per message and tool call) and watches that stream: while
+    # events keep arriving the turn runs as long as it needs, but if none arrive for
+    # STALL_TIMEOUT seconds it is stuck, so it is stopped. Returns claude's exit code, or
+    # 124 if it stalled.
     local out="$1"
     shift
-    rm -f "$out.timeout"
+    rm -f "$out.stalled"
     (cd "$repo" && exec "$CLAUDE_BIN" "$@") >"$out" 2>"$out.err" &
     local pid=$!
     turn_pid=$pid
     (
         nap=""
         trap '[ -n "$nap" ] && kill "$nap" 2>/dev/null; exit 0' TERM
-        sleep "$TURN_TIMEOUT" & nap=$!
-        wait "$nap"
-        touch "$out.timeout"
-        stop_tree "$pid"
+        size=-1
+        idle=0
+        while kill -0 "$pid" 2>/dev/null; do
+            sleep 5 & nap=$!
+            wait "$nap"
+            now=$(wc -c <"$out" 2>/dev/null | tr -d ' ' || echo 0)
+            if [ "$now" != "$size" ]; then
+                size="$now"
+                idle=0
+            else
+                idle=$((idle + 5))
+            fi
+            if [ "$idle" -ge "$STALL_TIMEOUT" ]; then
+                touch "$out.stalled"
+                stop_tree "$pid"
+                exit 0
+            fi
+        done
     ) &
     local guard=$!
     local rc=0
@@ -306,36 +329,91 @@ run_limited() {
     turn_pid=""
     kill "$guard" 2>/dev/null || true
     wait "$guard" 2>/dev/null || true
-    if [ -f "$out.timeout" ]; then
-        rm -f "$out.timeout"
+    if [ -f "$out.stalled" ]; then
+        rm -f "$out.stalled"
         return 124
     fi
     return "$rc"
 }
 
+# The last "result" event of a stream-json run, or nothing.
+turn_result() { jq -c 'select(.type == "result")' "$1" 2>/dev/null | tail -n 1; }
+
+# The conversation id of a run, available from its first event on.
+turn_session() { jq -r 'select(.session_id != null) | .session_id' "$1" 2>/dev/null | head -n 1; }
+
+continue_prompt() {
+    # $1 message id, $2 why the previous attempt ended
+    cat <<EOF
+Your previous attempt at the player's message #$1 $2 before it finished, and was
+restarted. Continue that request from where you left off. Some steps may already be
+done: check the city's current state with the state tools before repeating anything.
+Keep posting progress with ./scripts/chat-bridge.sh say update "...", and end with the
+answer for the player as before.
+EOF
+}
+
 run_claude() {
-    # $1 prompt, $2 output file. Resumes the saved conversation when there is one.
-    local prompt="$1" out="$2" session="" rc=0
-    local -a args=(-p "$prompt" --output-format json --permission-mode "$PERMISSION_MODE" --allowedTools "${allowed_tools[@]}")
-    [ -n "$MODEL" ] && args+=(--model "$MODEL")
+    # $1 message id, $2 prompt, $3 output file. Resumes the saved conversation when there
+    # is one. A turn that stalls or crashes is resumed in the same conversation with a
+    # "continue" prompt, up to MAX_RESTARTS times, so work is never silently abandoned.
+    # Returns 0 when a result was produced, 124 if every attempt stalled, else the exit code.
+    local id="$1" prompt="$2" out="$3" session="" rc=0 attempt=0 why
+    local -a base=(--output-format stream-json --verbose --permission-mode "$PERMISSION_MODE" --allowedTools "${allowed_tools[@]}")
+    [ -n "$MODEL" ] && base+=(--model "$MODEL")
     [ -f "$session_file" ] && session=$(cat "$session_file")
 
-    if [ -n "$session" ]; then
-        run_limited "$out" "${args[@]}" --resume "$session" || rc=$?
-        # A timed-out turn is not a broken session; keep it and do not run the turn twice.
-        if [ "$rc" = 0 ] || [ "$rc" = 124 ]; then
+    while :; do
+        rc=0
+        if [ -n "$session" ]; then
+            run_watched "$out" -p "$prompt" "${base[@]}" --resume "$session" || rc=$?
+        else
+            run_watched "$out" -p "$prompt" "${base[@]}" || rc=$?
+        fi
+
+        local started
+        started=$(turn_session "$out")
+        if [ -n "$started" ]; then
+            session="$started"
+            printf '%s' "$session" >"$session_file"
+        fi
+
+        if [ -n "$(turn_result "$out")" ]; then
+            return 0
+        fi
+
+        if [ -z "$started" ] && [ -n "$session" ] && [ "$rc" != 124 ]; then
+            # The resume itself failed (session gone or unreadable): start fresh once.
+            log "#$id: resuming session $session failed; starting a new conversation"
+            rm -f "$session_file"
+            session=""
+            continue
+        fi
+
+        attempt=$((attempt + 1))
+        if [ "$attempt" -gt "$MAX_RESTARTS" ]; then
             return "$rc"
         fi
-        log "resuming session $session failed; starting a new conversation"
-        rm -f "$session_file"
-    fi
 
-    run_limited "$out" "${args[@]}"
+        if [ "$rc" = 124 ]; then
+            why="stalled (no activity for ${STALL_TIMEOUT} s)"
+        else
+            why="stopped unexpectedly (exit $rc)"
+        fi
+        log "#$id: turn $why; resuming (restart $attempt of $MAX_RESTARTS)"
+        post_say update "That step got stuck, so I restarted it and am picking up where I left off." "$id" || true
+        post_status working "resuming message #$id"
+        cp -f "$out" "$out.attempt-$attempt" 2>/dev/null || true
+        sleep $((attempt * 5))
+        if [ -n "$session" ]; then
+            prompt=$(continue_prompt "$id" "$why")
+        fi
+    done
 }
 
 handle_message() {
     local message="$1"
-    local id text source out reply session is_error
+    local id text source out reply result is_error
     id=$(printf '%s' "$message" | jq -r '.id')
     text=$(printf '%s' "$message" | jq -r '.text')
     source=$(printf '%s' "$message" | jq -r '.source // "panel"')
@@ -348,25 +426,22 @@ handle_message() {
     log "#$id: $text"
     post_status thinking "reading message #$id"
 
-    out="$state_dir/turn-$id.json"
+    out="$state_dir/turn-$id.jsonl"
     start_watcher "$id"
     local rc=0
-    run_claude "$(build_prompt "$message")" "$out" || rc=$?
+    run_claude "$id" "$(build_prompt "$message")" "$out" || rc=$?
     stop_watcher
-    if [ "$rc" = 124 ]; then
-        log "#$id: stopped after ${TURN_TIMEOUT} s"
-        reply="That took longer than $((TURN_TIMEOUT / 60)) min, so I stopped. The progress lines above show what got done. Ask me to continue, or split it into smaller steps."
-    elif [ "$rc" = 0 ]; then
-        is_error=$(jq -r '.is_error // false' "$out" 2>/dev/null || echo true)
-        reply=$(jq -r '.result // empty' "$out" 2>/dev/null || true)
-        session=$(jq -r '.session_id // empty' "$out" 2>/dev/null || true)
-        [ -n "$session" ] && printf '%s' "$session" >"$session_file"
+
+    result=$(turn_result "$out")
+    if [ -n "$result" ]; then
+        reply=$(printf '%s' "$result" | jq -r '.result // empty' 2>/dev/null || true)
+        is_error=$(printf '%s' "$result" | jq -r '.is_error // false' 2>/dev/null || echo true)
         if [ "$is_error" = "true" ] && [ -z "$reply" ]; then
             reply="Claude hit an error on this one. Details: $out"
         fi
     else
-        reply=$(jq -r '.result // empty' "$out" 2>/dev/null || true)
-        [ -n "$reply" ] || reply="Claude could not run (exit $rc). Details: $out.err"
+        log "#$id: no result after $MAX_RESTARTS restarts (last exit $rc)"
+        reply="I kept getting stuck on this one and restarted $MAX_RESTARTS times without finishing. The progress lines above show what got done. Details: $out.err"
     fi
 
     [ -n "$reply" ] || reply="Done, but Claude ended the turn without a written answer. Details: $out"
