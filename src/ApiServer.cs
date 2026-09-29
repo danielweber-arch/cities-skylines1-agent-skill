@@ -291,6 +291,11 @@ namespace SkylinesAgentBridge
                 return RunOnGameThread(request, delegate { return GameState.BuildZoneAnomaliesJson(limit, minMinorityCells, minUnzonedCells, includeUnzonedHoles); });
             }
 
+            if (request.Method == "GET" && request.Path == "/state/areas")
+            {
+                return RunOnGameThread(request, AreaCommands.BuildAreasJson);
+            }
+
             if (request.Method == "GET" && request.Path == "/state/saves")
             {
                 return RunOnGameThread(request, SaveCommands.ListSaves);
@@ -406,6 +411,12 @@ namespace SkylinesAgentBridge
             {
                 string body = request.Body;
                 return RunWithSimulationStep(request, delegate { return BulldozeCommands.Bulldoze(body); });
+            }
+
+            if (request.Method == "POST" && request.Path == "/commands/unlock-area")
+            {
+                string body = request.Body;
+                return RunWithSimulationStep(request, delegate { return AreaCommands.UnlockArea(body); });
             }
 
             if (request.Method == "POST" && request.Path == "/commands/save")
@@ -553,7 +564,7 @@ namespace SkylinesAgentBridge
 
                 try
                 {
-                    AgentBridgeNotifier.Notify((inner.Ok ? "API OK: " : "API FAIL: ") + DescribeRequest(request));
+                    if (!IsDryRun(request)) AgentBridgeNotifier.Notify((inner.Ok ? "API OK: " : "API FAIL: ") + DescribeRequest(request));
                 }
                 catch (Exception ex)
                 {
@@ -602,7 +613,7 @@ namespace SkylinesAgentBridge
             {
                 try
                 {
-                    AgentBridgeNotifier.Notify((final.Ok ? "API OK: " : "API FAIL: ") + DescribeRequest(request));
+                    if (!IsDryRun(request)) AgentBridgeNotifier.Notify((final.Ok ? "API OK: " : "API FAIL: ") + DescribeRequest(request));
                 }
                 catch (Exception ex)
                 {
@@ -612,6 +623,14 @@ namespace SkylinesAgentBridge
             }, DefaultTimeoutMs);
 
             return HttpResponse.Json(final.Ok ? 200 : 500, final.Json);
+        }
+
+        // Dry runs change nothing in the city, so they stay out of the in-game console: a survey
+        // sends thousands of them, and "API OK: Place building ..." reads as if something was built.
+        private static bool IsDryRun(HttpRequest request)
+        {
+            return request.Body != null &&
+                System.Text.RegularExpressions.Regex.IsMatch(request.Body, "\"dryRun\"\\s*:\\s*true");
         }
 
         private static string DescribeRequest(HttpRequest request)
@@ -634,6 +653,7 @@ namespace SkylinesAgentBridge
                 if (request.Path == "/state/building-anomalies") return "Inspect building placement";
                 if (request.Path == "/state/zone-anomalies") return "Inspect zoning anomalies";
                 if (request.Path == "/state/saves") return "List saves";
+                if (request.Path == "/state/areas") return "Read map tiles";
                 if (request.Path == "/prefabs/roads") return "List road prefabs";
                 if (request.Path == "/prefabs/networks") return "List network prefabs";
                 if (request.Path == "/prefabs/buildings") return "List building prefabs";
@@ -712,6 +732,18 @@ namespace SkylinesAgentBridge
                 return "Bulldoze " + entityType + " #" + ((int)JsonUtil.GetNumber(body, "id", 0f)).ToString();
             }
 
+            if (request.Path == "/commands/unlock-area")
+            {
+                float tx = JsonUtil.GetNumber(body, "tileX", -9999f);
+                float tz = JsonUtil.GetNumber(body, "tileZ", -9999f);
+                if (tx != -9999f && tz != -9999f)
+                {
+                    return "Buy map tile " + ((int)tx).ToString() + "," + ((int)tz).ToString();
+                }
+                return "Buy map tile at " + ((int)JsonUtil.GetNumber(body, "x", 0f)).ToString() +
+                    "," + ((int)JsonUtil.GetNumber(body, "z", 0f)).ToString();
+            }
+
             if (request.Path == "/commands/save")
             {
                 return "Save city " + JsonUtil.GetString(body, "name", "AgentAutoSave");
@@ -735,7 +767,8 @@ namespace SkylinesAgentBridge
             {
                 string type = JsonUtil.GetString(body, "transportType", "");
                 if (type.Length == 0) type = JsonUtil.GetString(body, "prefab", "transit");
-                return (JsonUtil.GetBool(body, "dryRun", false) ? "Check " : "Create ") + type + " line";
+                return (JsonUtil.GetBool(body, "dryRun", false) ? "Check " : "Create ") + type + " line" +
+                    (JsonUtil.GetBool(body, "ignoreUnlock", false) ? " (unlock check skipped)" : "");
             }
 
             if (request.Path == "/commands/transit-line-edit")

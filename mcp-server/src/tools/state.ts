@@ -242,6 +242,16 @@ export function registerStateTools(server: McpServer, bridge: BridgeClient) {
   });
 
   registerRead(server, bridge, {
+    name: "cs1_state_areas",
+    path: "/state/areas",
+    description:
+      "Map tiles (the 5x5 grid of 1920 m tiles): owned, purchasable now, world bounds, and the " +
+      "price of buying each one next (game cents; priceDisplay is in the UI's money). Also the " +
+      "owned count, the max-area cap (maxAreaCount), and whether the next area milestone is " +
+      "reached. Read this before cs1_unlock_area.",
+  });
+
+  registerRead(server, bridge, {
     name: "cs1_state_saves",
     path: "/state/saves",
     description:

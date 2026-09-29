@@ -147,6 +147,10 @@ const ROUTES = {
   }),
 };
 
+const chatLog = [
+  { id: 1, from: "player", source: "panel", text: "build a road here", kind: "message" },
+];
+
 export function startMockBridge(port = 0) {
   const seenOps = new Map();
 
@@ -239,6 +243,20 @@ export function startMockBridge(port = 0) {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, echo: parsed }));
       });
+      return;
+    }
+
+    if (path === "/chat/history" || path === "/chat/inbox") {
+      const after = Number(url.searchParams.get("after") ?? 0);
+      const limit = Number(url.searchParams.get("limit") ?? 50);
+      const entries = chatLog.filter((message) => message.id > after).slice(0, limit);
+      const latestId = chatLog.length ? chatLog[chatLog.length - 1].id : 0;
+      const body =
+        path === "/chat/inbox"
+          ? { ok: true, messages: entries.filter((message) => message.from === "player"), lastId: latestId }
+          : { ok: true, entries, latestId, returned: entries.length };
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(body));
       return;
     }
 

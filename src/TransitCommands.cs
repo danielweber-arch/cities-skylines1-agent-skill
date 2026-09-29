@@ -36,11 +36,21 @@ namespace SkylinesAgentBridge
         {
             bool dryRun = JsonUtil.GetBool(body, "dryRun", false);
 
+            bool ignoreUnlock = JsonUtil.GetBool(body, "ignoreUnlock", false);
+
             TransportInfo info;
             string error;
-            if (!ResolveTransportInfo(body, out info, out error))
+            bool unlockIgnored;
+            if (!ResolveTransportInfo(body, ignoreUnlock, out info, out unlockIgnored, out error))
             {
-                return CommandResult.Fail(error);
+                CommandResult refused = CommandResult.Fail(error);
+                if (info != null && IsCreatableType(info.m_transportType) && !UnlockReport.IsUnlocked(info.m_UnlockMilestone))
+                {
+                    refused.Json = "{\"ok\":false,\"error\":\"" + JsonUtil.Escape(error) + "\"" +
+                        ",\"prefab\":\"" + JsonUtil.Escape(info.name) + "\"" +
+                        ",\"unlock\":" + UnlockReport.TransportUnlockJson(info) + "}";
+                }
+                return refused;
             }
 
             float roadSnap = Mathf.Clamp(JsonUtil.GetNumber(body, "roadSnapDistance", DefaultRoadSnapDistance), 1f, 128f);
@@ -126,6 +136,7 @@ namespace SkylinesAgentBridge
                     ",\"message\":\"Transit line validation passed; no line was created. Path finding between stops only runs after creation.\"" +
                     ",\"prefab\":\"" + JsonUtil.Escape(info.name) + "\"" +
                     ",\"transportType\":\"" + info.m_transportType.ToString() + "\"" +
+                    ",\"unlockIgnored\":" + JsonUtil.Bool(unlockIgnored) +
                     ",\"droppedDuplicateClosingStop\":" + JsonUtil.Bool(droppedClosingStop) +
                     ",\"stops\":" + StopsJson(resolved, null) + "}");
             }
@@ -173,12 +184,18 @@ namespace SkylinesAgentBridge
                 }
 
                 List<string> warnings = new List<string>();
+                if (unlockIgnored)
+                {
+                    warnings.Add("ignoreUnlock: the line-tool milestone is not passed (" + UnlockReport.TransportUnlockSummary(info) +
+                        "). If it requires a depot or station, the line gets no vehicles until one exists.");
+                }
                 ApplyLineProperties(transport, lineId, name, colorText != null, color, budget, float.NaN, warnings);
 
                 Debug.Log("[SkylinesAgentBridge] Created transit line " + lineId + " (" + info.name + ") with " + resolved.Count + " stops");
 
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":false" +
                     ",\"lineId\":" + lineId +
+                    ",\"unlockIgnored\":" + JsonUtil.Bool(unlockIgnored) +
                     ",\"droppedDuplicateClosingStop\":" + JsonUtil.Bool(droppedClosingStop) +
                     ",\"line\":" + LineSummaryJson(transport, lineId) +
                     ",\"stops\":" + StopsJson(resolved, nodeIds) +
@@ -689,10 +706,11 @@ namespace SkylinesAgentBridge
             }
         }
 
-        private static bool ResolveTransportInfo(string body, out TransportInfo info, out string error)
+        private static bool ResolveTransportInfo(string body, bool ignoreUnlock, out TransportInfo info, out bool unlockIgnored, out string error)
         {
             info = null;
             error = null;
+            unlockIgnored = false;
             string prefabName = JsonUtil.GetString(body, "prefab", "").Trim();
             string typeText = JsonUtil.GetString(body, "transportType", "").Trim();
 
@@ -732,11 +750,17 @@ namespace SkylinesAgentBridge
                 return false;
             }
 
-            UnlockManager unlock = Singleton<UnlockManager>.instance;
-            if (unlock != null && !unlock.Unlocked(info.m_UnlockMilestone))
+            if (!UnlockReport.IsUnlocked(info.m_UnlockMilestone))
             {
-                error = info.name + " is not unlocked yet (UnlockManager.Unlocked(m_UnlockMilestone) is false).";
-                return false;
+                // The same test the Public Transport panel uses to enable the line tool button
+                // (GeneratedScrollPanel.CreateAssetItem -> UnlockManager.Unlocked(GetUnlockMilestone())).
+                if (!ignoreUnlock)
+                {
+                    error = info.name + " is not unlocked yet: " + UnlockReport.TransportUnlockSummary(info) +
+                        ". Pass ignoreUnlock:true to skip this check (the game's line tool would not offer it).";
+                    return false;
+                }
+                unlockIgnored = true;
             }
 
             return true;

@@ -164,13 +164,20 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
       description:
         "Build a single segment between two points. Prefer cs1_build_grid for anything with more " +
         "than a few segments. Endpoints within snapDistance of an existing node reuse it, which " +
-        "is what makes the result a real intersection rather than a crossing.",
+        "is what makes the result a real intersection rather than a crossing. A surface pedestrian " +
+        "path is refused (reason 'pathOnRoad', with suggestedStart/suggestedEnd) when it runs onto a " +
+        "surface road: the game never joins a path to a road node or splits a road for it. End paths " +
+        "at the road edge; the path end links to the sidewalk by a lane connection within 16.5 m.",
       inputSchema: {
         roadPrefab: z.string(),
         start: point,
         end: point,
         snapDistance: z.number().min(0).max(64).optional(),
         name: z.string().optional(),
+        allowRoadOverlap: z
+          .boolean()
+          .optional()
+          .describe("Default false. Build a surface path onto a road anyway (non-vanilla geometry)."),
         dryRun,
       },
     },
@@ -199,16 +206,35 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
     "cs1_place_building",
     {
       description:
-        "Place a service building. Follow every placement with cs1_connect on the same position, " +
-        "otherwise the building has no road access and will not work.",
+        "Place a building, including a unique or waterfront attraction. Locked prefabs are refused " +
+        "by default; use ignoreUnlock only for an intentional test. Follow every placement with " +
+        "cs1_connect on the same position when it needs road access.",
       inputSchema: {
         buildingPrefab: z.string().describe("Exact name from cs1_prefabs_buildings."),
         position: point,
         angleDegrees: z.number().optional(),
+        validate: z.boolean().optional().describe("Run the in-game placement and collision checks."),
+        elevation: z.number().optional().describe("Elevation step used by validated placement."),
+        ignoreUnlock: z.boolean().optional().describe("Bypass the prefab milestone gate for an intentional test."),
         dryRun,
       },
     },
     async (args) => run("/commands/place-building", args),
+  );
+
+  server.registerTool(
+    "cs1_set_building_active",
+    {
+      description:
+        "Turn an existing service, station, or unique building on or off by id. The bridge uses " +
+        "the game's production-rate setter on the simulation thread; re-read cs1_state_facilities " +
+        "after a simulation step to verify Active and any remaining problem flags.",
+      inputSchema: {
+        id: z.number().int().min(1).describe("Building id from cs1_state_facilities."),
+        active: z.boolean().describe("true to activate, false to deactivate."),
+      },
+    },
+    async (args) => run("/commands/set-building-active", args),
   );
 
   server.registerTool(
@@ -238,6 +264,34 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
       },
     },
     async (args) => run("/commands/bulldoze", args),
+  );
+
+  server.registerTool(
+    "cs1_unlock_area",
+    {
+      description:
+        "Buy a map tile, as the game's area panel does: checks it is not owned, is edge-adjacent " +
+        "to an owned tile, the city is under the max-area cap and has reached the next area " +
+        "milestone, then pays the land price and unlocks it. Give tileX/tileZ (0-4, from " +
+        "cs1_state_areas) or a world position x/z inside the tile. dryRun:true reports whether it " +
+        "would succeed and the price.",
+      inputSchema: {
+        tileX: z.number().int().min(0).max(4).optional(),
+        tileZ: z.number().int().min(0).max(4).optional(),
+        x: z.number().optional().describe("World X in metres; used when tileX/tileZ are absent."),
+        z: z.number().optional().describe("World Z in metres; used when tileX/tileZ are absent."),
+        ignoreMaxAreaCount: z
+          .boolean()
+          .optional()
+          .describe(
+            "Raise the game's max-area cap (default 9) to 25 before buying, as tile mods do. " +
+              "Does not bypass the area milestones. Not saved: a reload resets the cap to " +
+              "max(9, owned tiles).",
+          ),
+        dryRun: z.boolean().optional().describe("Validate and report the price without buying."),
+      },
+    },
+    async (args) => run("/commands/unlock-area", args),
   );
 
   // ------------------------------------------------------------------ repair + sim
@@ -302,9 +356,11 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
     "cs1_save",
     {
       description:
-        "Save the city. Returns immediately with the target path — the file appears a few seconds " +
-        "later, so poll cs1_state_saves until it exists before claiming the save succeeded. Names " +
-        "are sanitised server-side; read saveName in the response rather than assuming.",
+        "Save the city through the game's own save panel. Returns immediately — poll " +
+        "cs1_state_saves until the file exists before claiming it succeeded. Names are sanitised " +
+        "server-side; read saveName in the response. If the player has \"quit after saving\" " +
+        "checked, this closes the game and the chat box dies. Do not save just to checkpoint " +
+        "while someone is talking in the chat.",
       inputSchema: { name: z.string().optional().describe("Default AgentAutoSave.") },
     },
     async (args) => run("/commands/save", args),

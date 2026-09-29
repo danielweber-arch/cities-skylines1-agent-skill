@@ -88,6 +88,7 @@ curl is the fallback for debugging the bridge itself.
 | Place services | `cs1_place_building` then `cs1_connect` |
 | Look at the result | `cs1_capture` |
 | Persist | `cs1_save` then `cs1_state_saves` |
+| Buy map tiles | `cs1_state_areas`, then `cs1_unlock_area` (dryRun first) |
 | Review public transport | `cs1_state_transit` (add `detail:"full"`, `includeStops:true` for stops) |
 | Find congestion | `cs1_state_traffic` |
 | Draw / change / remove a transit line | `cs1_transit_line_create`, `cs1_transit_line_edit`, `cs1_transit_line_delete` (dryRun first) |

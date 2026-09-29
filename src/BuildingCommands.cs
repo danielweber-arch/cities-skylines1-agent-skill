@@ -32,6 +32,18 @@ namespace SkylinesAgentBridge
                 return CommandResult.Fail("Building prefab is blocked and must not be used: " + prefabName + " (" + AssetPolicy.BlockReason(prefabName) + ")");
             }
 
+            // Match the build panel's unlock gate. Unique buildings are otherwise easy to
+            // place accidentally through the API because BuildingManager.CreateBuilding does
+            // not enforce the milestone itself. Keep an explicit escape hatch for a player who
+            // is deliberately testing a locked prefab.
+            bool ignoreUnlock = JsonUtil.GetBool(body, "ignoreUnlock", false);
+            MilestoneInfo unlockMilestone = info.GetUnlockMilestone();
+            if (!ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone))
+            {
+                string milestoneName = unlockMilestone == null ? "unknown milestone" : (unlockMilestone.m_name ?? unlockMilestone.name ?? "unnamed milestone");
+                return CommandResult.Fail("Building prefab is locked: " + prefabName + " (" + milestoneName + "). Pass ignoreUnlock:true only for an intentional test.");
+            }
+
             // Buildings whose position the in-game tool snaps (harbors and other shoreline
             // buildings) are validated by default; anything else only on "validate":true.
             bool validate = JsonUtil.GetBool(body, "validate", NeedsPlacementCheck(info));
@@ -58,7 +70,7 @@ namespace SkylinesAgentBridge
 
             if (dryRun)
             {
-                return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Place-building validation passed.\",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"}");
+                return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Place-building validation passed.\",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\",\"unlockIgnored\":" + JsonUtil.Bool(ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone)) + "}");
             }
 
             SimulationManager simulation = Singleton<SimulationManager>.instance;
@@ -88,7 +100,8 @@ namespace SkylinesAgentBridge
             string json = "{\"ok\":true,\"dryRun\":false,\"buildingId\":" + buildingId +
                 ",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"" +
                 ",\"service\":\"" + JsonUtil.Escape(info.m_class.m_service.ToString()) + "\"" +
-                ",\"subService\":\"" + JsonUtil.Escape(info.m_class.m_subService.ToString()) + "\"}";
+                ",\"subService\":\"" + JsonUtil.Escape(info.m_class.m_subService.ToString()) + "\"" +
+                ",\"unlockIgnored\":" + JsonUtil.Bool(ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone)) + "}";
 
             Debug.Log("[SkylinesAgentBridge] Placed building " + buildingId + " with prefab " + prefabName);
             return CommandResult.FromJson(json);
@@ -552,16 +565,6 @@ namespace SkylinesAgentBridge
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"," + checkJson + "}");
             }
 
-            int subBuildings = info.m_subBuildings == null ? 0 : info.m_subBuildings.Length;
-            if (subBuildings > 0)
-            {
-                // BuildingManager.CreateBuilding does not create sub-buildings (the tool creates
-                // them one by one), so the result would be a partial building.
-                CommandResult subFail = CommandResult.Fail("Prefab has " + subBuildings + " sub-building(s), which the bridge does not create; place it with the in-game tool. Nothing was placed.");
-                subFail.Json = "{\"ok\":false,\"dryRun\":false,\"error\":\"" + JsonUtil.Escape(subFail.Error) + "\",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"," + checkJson + "}";
-                return subFail;
-            }
-
             if (check.Errors != ToolBase.ToolErrors.None)
             {
                 CommandResult fail = CommandResult.Fail("Placement rejected by " + info.m_buildingAI.GetType().Name + ".CheckBuildPosition/CheckSpace; nothing was placed.");
@@ -585,6 +588,34 @@ namespace SkylinesAgentBridge
                 return CommandResult.Fail("Validation passed but BuildingManager.CreateBuilding failed (building pool full?).");
             }
             simulation.m_currentBuildIndex += 1u;
+            if (info.m_subBuildings != null)
+            {
+                Quaternion rotation = Quaternion.AngleAxis(check.Angle * Mathf.Rad2Deg, Vector3.down);
+                for (int i = 0; i < info.m_subBuildings.Length; i++)
+                {
+                    BuildingInfo.SubInfo sub = info.m_subBuildings[i];
+                    if (sub.m_buildingInfo == null)
+                    {
+                        continue;
+                    }
+                    Vector3 subPosition = check.Position + (rotation * sub.m_position);
+                    if (sub.m_fixedHeight)
+                    {
+                        subPosition.y = sub.m_position.y;
+                    }
+                    float subAngle = check.Angle + (sub.m_angle * Mathf.Deg2Rad);
+                    randomizer = simulation.m_randomizer;
+                    ushort subId;
+                    bool subCreated = buildings.CreateBuilding(out subId, ref randomizer, sub.m_buildingInfo, subPosition, subAngle, 0, simulation.m_currentBuildIndex);
+                    simulation.m_randomizer = randomizer;
+                    if (!subCreated)
+                    {
+                        buildings.ReleaseBuilding(buildingId);
+                        return CommandResult.Fail("Main building " + buildingId + " was released because sub-building " + i + " failed to create.");
+                    }
+                    simulation.m_currentBuildIndex += 1u;
+                }
+            }
 
             Debug.Log("[SkylinesAgentBridge] Placed validated building " + buildingId + " with prefab " + prefabName);
             return CommandResult.FromJson("{\"ok\":true,\"dryRun\":false,\"buildingId\":" + buildingId +

@@ -213,6 +213,10 @@ export function summarizePrefabs(payload: unknown) {
   return {
     total: rows.length,
     names: rows.map((r) => String(r.name ?? r.displayName ?? "")).filter(Boolean),
+    // Building prefabs carry the build panel's unlock state; place-building does not enforce it.
+    ...(rows.some((r) => r.unlocked === false)
+      ? { locked: rows.filter((r) => r.unlocked === false).map((r) => String(r.name ?? "")) }
+      : {}),
     note: "Names only — these are what roadPrefab and buildingPrefab expect.",
   };
 }
@@ -248,6 +252,22 @@ export function summarizeTransit(payload: unknown) {
     totalsByType: record.totalsByType,
     cityPassengersByType: record.cityPassengersByType,
     budgets: record.budgets,
+    // Line tools the game's panel would not offer yet, with the milestone that gates them.
+    lockedTransport: (Array.isArray(record.transportPrefabs) ? (record.transportPrefabs as Row[]) : [])
+      .filter((p) => p.unlocked === false)
+      .map((p) => {
+        const unlock = (p.unlock ?? {}) as Row;
+        const milestone = (unlock.milestone ?? {}) as Row;
+        const progress = (milestone.progress ?? {}) as Row;
+        return {
+          prefab: p.name,
+          transportType: p.transportType,
+          milestone: milestone.name,
+          milestoneType: milestone.type,
+          requirement: progress.description,
+          progress: progress.text,
+        };
+      }),
     facilityCount: record.facilityCount ?? facilities.length,
     facilitiesBySubService: record.facilitiesBySubService ?? countBy(facilities, "subService"),
     facilitiesNeedingAttentionCount: brokenFacilities.length,
