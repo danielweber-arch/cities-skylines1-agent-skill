@@ -214,6 +214,14 @@ export function registerTransitTools(server: McpServer, bridge: BridgeClient) {
         name: z.string().max(64).optional(),
         color: hexColor.optional(),
         budget: lineBudget.optional(),
+        ignoreUnlock: z
+          .boolean()
+          .optional()
+          .describe(
+            "Skip the bridge's unlock check (the line-tool milestone the game's Public Transport panel " +
+              "tests). A refusal names the milestone and its requirement (e.g. a depot); the response " +
+              "says unlockIgnored:true when the check was skipped. Default false.",
+          ),
         ...snapDistances,
         dryRun,
       },

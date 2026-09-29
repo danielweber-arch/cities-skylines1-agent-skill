@@ -5,8 +5,10 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { startMockBridge } from "./mock-bridge.js";
@@ -19,12 +21,18 @@ const tokens = (s) => Math.ceil(s.length / 4);
 const textOf = (result) =>
   result.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
 
-async function withServer(run) {
+async function withServer(run, extraEnv = {}) {
   const { server, port } = await startMockBridge();
+  const cursor = join(mkdtempSync(join(tmpdir(), "cs1-chat-")), "cursor.json");
   const transport = new StdioClientTransport({
     command: "npx",
     args: ["tsx", entry],
-    env: { ...process.env, CS1_BRIDGE_URL: `http://127.0.0.1:${port}` },
+    env: {
+      ...process.env,
+      CS1_BRIDGE_URL: `http://127.0.0.1:${port}`,
+      CS1_CHAT_CURSOR: cursor,
+      ...extraEnv,
+    },
     stderr: "ignore",
   });
   const client = new Client({ name: "test", version: "1.0.0" });
@@ -51,6 +59,8 @@ test("exposes typed tools with descriptions", async () => {
       "cs1_build_grid",
       "cs1_build_neighborhood",
       "cs1_connect",
+      "cs1_place_building",
+      "cs1_set_building_active",
       "cs1_capture",
       "cs1_save",
     ]) {
@@ -140,6 +150,22 @@ test("a wrong zone name is caught by the schema", async () => {
   });
 });
 
+test("build-network passes allowRoadOverlap through and types it", async () => {
+  await withServer(async (client) => {
+    const base = { roadPrefab: "Pedestrian Pavement", start: { x: 1473.5, z: 865.69 }, end: { x: 1473.5, z: 829.69 } };
+    const echoed = JSON.parse(
+      textOf(await client.callTool({ name: "cs1_build_network", arguments: { ...base, allowRoadOverlap: true } })),
+    );
+    assert.equal(echoed.echo.allowRoadOverlap, true, "the flag reaches the bridge");
+
+    const bad = await client
+      .callTool({ name: "cs1_build_network", arguments: { ...base, allowRoadOverlap: "yes" } })
+      .catch((error) => ({ thrown: error }));
+    const message = bad.thrown ? String(bad.thrown) : textOf(bad);
+    assert.match(message, /allowRoadOverlap|boolean|invalid|expected/i, `expected a validation failure, got: ${message}`);
+  });
+});
+
 test("build-grid returns block centres ready to zone", async () => {
   await withServer(async (client) => {
     const parsed = JSON.parse(
@@ -156,6 +182,65 @@ test("build-grid returns block centres ready to zone", async () => {
     assert.deepEqual(parsed.blockCenters[0], { x: 240, z: -260 }, "first centre is origin + half a cell");
     assert.equal(parsed.segmentIds.length, 24, "3x3 lattice has 24 segments");
   });
+});
+
+test("chat listen is the play loop and resumes after a reload", async () => {
+  await withServer(async (client) => {
+    const { tools } = await client.listTools();
+    const listen = tools.find((tool) => tool.name === "cs1_chat_listen");
+    assert.ok(listen, "cs1_chat_listen must exist for any model to play");
+    assert.match(listen.description, /Do not exit the loop/);
+    assert.equal(
+      tools.some((tool) => /Claude/.test(tool.description ?? "")),
+      false,
+      "tool text must not name one model",
+    );
+
+    const first = JSON.parse(textOf(await client.callTool({ name: "cs1_chat_listen", arguments: { wait: 0 } })));
+    assert.equal(first.bridge, "up");
+    assert.equal(first.messages.length, 1);
+    assert.equal(first.messages[0].text, "build a road here");
+    assert.equal(first.lastId, 1);
+
+    const second = JSON.parse(textOf(await client.callTool({ name: "cs1_chat_listen", arguments: { wait: 0 } })));
+    assert.equal(second.messages.length, 0, "the saved cursor must hide the message already delivered");
+  });
+});
+
+test("the master plan is served and later orders are the default", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cs1-plan-"));
+  const plan = join(dir, "plan.md");
+  writeFileSync(
+    plan,
+    "## 1. Old study\n\nold airport site\n\n## 9. Player directives\n\ncurrent rule\n\n### 10.15 Airport and the hubs\n\nairport at -2350\n",
+  );
+  await withServer(async (client) => {
+    const resources = await client.listResources();
+    assert.ok(resources.resources.some((resource) => resource.uri === "cs1://master-plan"));
+
+    const current = JSON.parse(textOf(await client.callTool({ name: "cs1_master_plan", arguments: {} })));
+    assert.match(current.text, /current rule/);
+    assert.match(current.text, /airport at -2350/);
+    assert.equal(current.text.includes("old airport site"), false);
+
+    const one = JSON.parse(textOf(await client.callTool({ name: "cs1_master_plan", arguments: { section: "10.15" } })));
+    assert.match(one.text, /airport at -2350/);
+    assert.equal(one.text.includes("current rule"), false);
+
+    const full = JSON.parse(textOf(await client.callTool({ name: "cs1_master_plan", arguments: { full: true } })));
+    assert.match(full.text, /old airport site/);
+  }, { CS1_MASTER_PLAN: plan });
+});
+
+test("a reloaded city does not hide new chat behind the old cursor", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cs1-chat-"));
+  const cursor = join(dir, "cursor.json");
+  writeFileSync(cursor, JSON.stringify({ lastId: 40 }));
+  await withServer(async (client) => {
+    const body = JSON.parse(textOf(await client.callTool({ name: "cs1_chat_listen", arguments: { wait: 0 } })));
+    assert.equal(body.gameRestarted, true);
+    assert.equal(body.messages[0].id, 1);
+  }, { CS1_CHAT_CURSOR: cursor });
 });
 
 test("retrying with the same opId does not build twice", async () => {

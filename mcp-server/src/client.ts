@@ -32,6 +32,24 @@ export class BridgeClient {
     return this.parse(await this.request("GET", path, query));
   }
 
+  /**
+   * GET that rides out a game reload. Build commands are not retried — a retried
+   * build can apply twice. Chat reads are safe to repeat.
+   */
+  async getWhileDown(path: string, query: Record<string, unknown>, budgetMs: number): Promise<unknown> {
+    const deadline = Date.now() + Math.max(0, budgetMs);
+    for (;;) {
+      try {
+        return await this.get(path, query);
+      } catch (error) {
+        if (!isBridgeDown(error) || Date.now() >= deadline) {
+          throw error;
+        }
+        await delay(400);
+      }
+    }
+  }
+
   async post(path: string, body: unknown): Promise<unknown> {
     return this.parse(await this.request("POST", path, {}, body));
   }
@@ -113,6 +131,19 @@ function extractError(text: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A transport failure, not an HTTP error from the mod. Those are safe to retry on reads. */
+export function isBridgeDown(error: unknown): boolean {
+  return (
+    error instanceof BridgeError &&
+    error.status === undefined &&
+    /Could not reach the bridge|ECONNREFUSED|ECONNRESET|socket hang up|other side closed/i.test(error.message)
+  );
 }
 
 function explainTransportFailure(error: unknown, baseUrl: string): string {

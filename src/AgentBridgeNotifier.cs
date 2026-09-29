@@ -112,12 +112,12 @@ namespace SkylinesAgentBridge
             titleLabel.relativePosition = new Vector3(10f, 8f);
             RegisterDragEvents(titleLabel);
 
-            // Opens and closes the separate Claude chat window (ChatPanel).
-            chatButton = CreateButton("SkylinesAgentBridgeNotifierChat", "Claude", 404f);
+            // Opens and closes the separate Codex chat window (ChatPanel).
+            chatButton = CreateButton("SkylinesAgentBridgeNotifierChat", "Codex", 404f);
             if (chatButton != null)
             {
                 chatButton.width = 60f;
-                chatButton.tooltip = "Show or hide the Claude chat window (Ctrl+Shift+C)";
+                chatButton.tooltip = "Show or hide the Codex chat window (Ctrl+Shift+C)";
                 chatButton.eventClick += delegate(UIComponent component, UIMouseEventParameter eventParam)
                 {
                     ChatPanel.Toggle();

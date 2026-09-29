@@ -90,6 +90,11 @@ Returns loaded network prefabs. Optional service filter:
 GET /prefabs/networks?service=Water
 ```
 
+Each entry has `name`, `displayName`, `service`, `subService`, `ai` (the `NetAI` class name),
+`connectionClass` and `intersectClass` (`"Service/SubService/Layer"` or `null`; `null` means the
+managed reference is null, the same `(object)x != null` test `NetManager.RayCast` uses). The game's
+net tool picks snap targets by these two classes (see node reuse under `build-network`).
+
 ## GET /prefabs/buildings
 
 Returns loaded building prefabs. Optional service filter:
@@ -100,6 +105,11 @@ GET /prefabs/buildings?service=Electricity
 
 Known broken/blocked building assets are omitted from this list. The current
 blocked family is `Block Services - ...`.
+
+Each entry also has `unlocked` (`UnlockManager.Unlocked(info.GetUnlockMilestone())`, the test the
+build panel uses to enable the prefab's button) and `unlockMilestone` (the milestone's name, or
+`null`). `place-building` enforces the same gate by default; pass `ignoreUnlock:true` only for an
+intentional test of a locked prefab.
 
 ## GET /state/problems
 
@@ -195,7 +205,10 @@ curl -sS "http://127.0.0.1:32123/state/networks?limit=1000"
 ```
 
 Each segment includes `id`, `prefab`, `service`, `subService`, `problems`,
-`name`, `startNodeId`, `endNodeId`, `start`, `end`, and `middle`.
+`name`, `startNodeId`, `endNodeId`, `start`, `end`, and `middle`. When a node is linked to a lane by
+the game's `UpdateLaneConnection` (`NetNode.m_lane`, e.g. a path end attached to a road sidewalk or a
+transit stop), the segment also carries `startNodeLaneSegmentId` / `endNodeLaneSegmentId`: the
+segment that lane belongs to.
 
 ## GET /state/road-anomalies
 
@@ -318,6 +331,54 @@ the terrain), for example `"start": {"x": 0, "z": 0, "elevation": 12}`. Use it w
 tunnel prefabs such as `Train Track Elevated`. New nodes store the height in `NetNode.m_elevation`.
 Snapping onto an existing node ignores height, and no pillars are placed. `dryRun` reports the
 resulting `startY` and `endY`.
+
+**Node reuse.** An endpoint within the snap distance of an existing node reuses it when the node is
+the same prefab, both are roads, or both share service, sub-service and layer. A ground pedestrian
+path (`PedestrianPathAI`) may also end on a road node when the game's own net tool would snap it
+there (`NetTool.MakeControlPoint` -> `NetManager.RayCast` node filter: the classes match directly,
+through the road's `intersectClass`, or through the path's `intersectClass` with
+`CanIntersect`, plus both `CanConnect` checks). **For the vanilla prefabs this never happens, and
+that is the game's rule:** every `Pedestrian*` prefab is `Beautification/BeautificationParks/Default`
+and every road `Road/None/Default`, all with a null `intersectClass` (see `GET /prefabs/networks`),
+so the net tool's raycast never returns a road node or road segment for a path. The rule stays for
+modded paths that set an `intersectClass`.
+
+**Paths and roads.** In the game a path never shares a node with a road and never splits a road
+segment. A path drawn onto a road is refused by `NetTool.CreateNode` as a collision (roads are a
+public service and not auto-removable). Paths reach roads through a **lane connection** instead:
+`PedestrianPathAI.UpdateLaneConnection` links a path node to the nearest road pedestrian (sidewalk)
+lane within 16.5 m for a dead-end node (8 m otherwise), on the simulation step after the node is
+built. `GET /state/networks` shows it as `startNodeLaneSegmentId` / `endNodeLaneSegmentId`.
+
+So `build-network` refuses a surface path (`PedestrianPathAI`, not underground, no
+`intersectClass`, both endpoints below 5 m `elevation`) whose straight line comes closer to a surface
+road's centre line (`RoadAI`, nodes not underground) than that road's `m_halfWidth`, sampled every
+0.5 m (endpoints exactly). The check runs before `dryRun` returns. Response (illustrative values):
+
+```json
+{
+  "ok": false,
+  "error": "Pedestrian Pavement runs onto road segment 25831 (Basic Road) at ...",
+  "reason": "pathOnRoad",
+  "roadSegmentId": 25831,
+  "roadPrefab": "Basic Road",
+  "overlapAt": { "x": 1473.5, "z": 829.69 },
+  "distanceFromCentre": 0,
+  "roadHalfWidth": 8,
+  "suggestedStart": null,
+  "suggestedEnd": { "x": 1473.5, "z": 839.19 }
+}
+```
+
+`suggestedStart` / `suggestedEnd` are given for an endpoint that lies inside a road: the first point
+1 m clear of every surface road when walking back along the path. Build to that point; if the road
+has sidewalks (pedestrian lanes; highways have none) its dead-end node then lane-connects to the
+nearest one. The test is a centre-line approximation of the game's
+collision test (it ignores the path's own width, and a corner clipped between two samples can slip
+through). To cross a road use elevated or tunnel pieces.
+`"allowRoadOverlap": true` skips the check and builds the old way (an unjoined path node on the road,
+geometry the game's tool cannot make). If both path endpoints land on the two nodes of one existing
+road segment (modded paths only), nothing is built and the call fails naming that segment.
 
 ## POST /commands/build-road
 
@@ -525,9 +586,15 @@ Request:
   "dryRun": true,
   "buildingPrefab": "Wind Turbine",
   "position": { "x": 300, "z": 200 },
-  "angleDegrees": 0
+  "angleDegrees": 0,
+  "ignoreUnlock": false
 }
 ```
+
+Locked prefabs fail before placement. A dry run or live call with `ignoreUnlock:true` reports
+`unlockIgnored:true` when it bypassed a locked milestone. The endpoint still does not charge the
+construction cost; the validated response reports `constructionCost` so a future cost-aware
+caller can make that decision explicitly.
 
 ### Placement validation (`"validate"`)
 
@@ -627,6 +694,9 @@ Turns an existing building on or off by id.
   "active": false
 }
 ```
+
+The change is applied on the simulation thread through the building AI's production-rate setter.
+Re-read `/state/facilities` after a simulation step to confirm the `active` flag and problem list.
 
 ## POST /commands/disable-blocked-assets
 
@@ -740,6 +810,68 @@ Supported command types:
 
 If an item does not include `dryRun`, it inherits the batch-level `dryRun` value. Batches are limited to 32 commands.
 
+## Map tiles
+
+The map is a 5x5 grid (`GameAreaManager.AREAGRID_RESOLUTION`) of 1920 m tiles (`AREAGRID_CELL_SIZE`). Tile `x,z` covers world `[(x - 2.5) * 1920, (x - 1.5) * 1920]` on each axis (`GameAreaManager.GetAreaBounds`), so the grid runs from -4800 to 4800 and the default start tile is 2,2.
+
+The game allows a tile to be bought (`GameAreaManager.CanUnlock`) when all of these hold:
+
+- it is inside the grid and not owned;
+- it shares an edge with an owned tile;
+- owned tiles (`m_areaCount`) are below the cap `MaxAreaCount` (the field `m_maxAreaCount`, defaulted to 9; mods raise it through `IAreas.maxAreaCount`, clamped to 1..25; it is not saved, and a load resets it to max(9, owned));
+- the next area milestone is reached: `UnlockManager.Unlocked(m_areaCount)` checks `m_AreaMilestones[m_areaCount]` (clamped to the last one);
+- no mod's `IAreasExtension.OnCanUnlockArea` hook refuses it.
+
+Prices are in game money units (cents), as `GameAreaManager.CalculateTilePrice` returns them; `priceDisplay` is the value the area panel shows (price / 100). A tile's price depends on how many tiles are already owned, so it changes after every purchase.
+
+### GET /state/areas
+
+Every tile, row by row (z, then x):
+
+```json
+{"ok":true,"gridResolution":5,"tileSize":1920,"origin":{"x":-4800,"z":-4800},
+ "ownedCount":9,"maxAreaCount":9,"gridMaxAreaCount":25,"atMaxAreaCount":true,
+ "nextAreaMilestoneReached":true,"nextAreaMilestone":{"name":"...","title":"...","reached":true},
+ "purchasableCount":0,"startTile":{"tileX":2,"tileZ":2},"cash":123456789,
+ "tiles":[{"tileX":0,"tileZ":0,"index":0,"owned":false,"unlockOrder":0,"start":false,
+           "adjacentToOwned":false,"purchasable":false,
+           "bounds":{"minX":-4800,"minZ":-4800,"maxX":-2880,"maxZ":-2880},
+           "center":{"x":-3840,"z":-3840},"price":6000000,"priceDisplay":60000,"affordable":true}, ...]}
+```
+
+- `purchasable` is the game's own `CanUnlock(x, z)` with the current cap. It does not include money: `affordable` is `EconomyManager.PeekResource(LandPrice, price) == price`, the test the area panel uses to enable its Purchase button.
+- `unlockOrder` is the tile's `m_areaGrid` value: 0 for unowned, else the order it was bought in (the start tile is 1).
+- `price` is the price of buying that tile next, computed for every unowned tile with the same inputs the area panel uses (road/rail/ship/air connection surcharges, natural resources, water, flatness). `CalculateTilePrice(tile)` itself returns 0 for tiles `CanUnlock` refuses, which is why the bridge gathers the inputs itself. Owned tiles report `price: null`.
+- The numbers above show the shape only.
+
+### POST /commands/unlock-area
+
+`{ "tileX": 3, "tileZ": 2, "dryRun": true }` or `{ "x": 2500, "z": -300 }` (a world position inside the tile). `tileX`/`tileZ` must be whole numbers.
+
+- Validates owned, adjacency, cap, area milestone, money, and `CanUnlock`, then on the simulation thread does what the area panel's Purchase button does (`GameAreaTool.UnlockArea`): `CalculateTilePrice(tile)`, `EconomyManager.FetchResource(LandPrice, price, ...)`, `GameAreaManager.UnlockArea(tile)`. The bridge peeks the money first, because `FetchResource` deducts the full amount even when the city cannot cover it.
+- `ignoreMaxAreaCount: true` (alias `ignoreMilestoneLimit`) sets the cap to 25 through `IAreas.maxAreaCount` before buying, as the 25-tile mods do. It does not bypass the area milestones; the bridge never fakes milestone progress. The raised cap lasts until the city is reloaded; owned tiles stay owned. If the purchase is then refused before payment, the cap is put back.
+- A refusal returns HTTP 500 with `ok:false`, `canUnlock:false`, the reason, and the facts it checked:
+
+```json
+{"ok":false,"dryRun":true,"canUnlock":false,
+ "error":"At the maximum area count (9 of 9). Pass ignoreMaxAreaCount:true to raise the cap to 25.",
+ "tileX":3,"tileZ":2,"index":13,"owned":false,"adjacentToOwned":true,
+ "nextAreaMilestoneReached":true,"nextAreaMilestone":{...},"ownedCount":9,
+ "maxAreaCount":9,"effectiveMaxAreaCount":9,"price":6000000,"priceDisplay":60000,"affordable":true}
+```
+
+- A passing dry run returns the same facts with `ok:true`, `canUnlock:true` and `wouldRaiseMaxAreaCount`.
+- A purchase returns:
+
+```json
+{"ok":true,"dryRun":false,"unlocked":true,"tileX":3,"tileZ":2,"index":13,
+ "price":6000000,"priceDisplay":60000,"cashBefore":123456789,"cashAfter":117456789,
+ "ownedCount":10,"maxAreaCount":25,"raisedMaxAreaCount":true}
+```
+
+- If `GameAreaManager.UnlockArea` returns false after payment (its terrain detail patch failed), (its own `CanUnlock` refused, or the terrain detail patch failed), the response is `ok:false, unlocked:false` with an error; the money stays deducted, as it does with the game's own tool.
+- Confirm with `GET /state/areas`.
+
 ## Public transport
 
 Read and change public transport lines, service budgets and policies, and see where the roads are congested. Every field below comes from a named game member, and the response says which one. Line and stop edits run on the command queue like every other command. They honour `dryRun` and return `ok:false` with an error rather than throwing.
@@ -769,7 +901,9 @@ Response fields:
 - `totalsByType`: for each type, `lines`, `completeLines`, `stops`, `vehicles`, `targetVehicles` and `passengersLastWeek` (the sum of the lines' `m_averageCount`).
 - `cityPassengersByType`: `TransportManager.m_passengers[type]` residents and tourists (`m_averageCount`), which are the counters the Public Transport info view shows. Note that the view adds `Airplane` and `Helicopter` together.
 - `budgets`: `EconomyManager.GetBudget` day and night values for `PublicTransport` and each transit sub-service.
-- `transportPrefabs`: every loaded `TransportInfo`, with `transportType`, `vehicleType`, `defaultForType`, net and station services, `unlocked`, and `creatableByBridge`. Use a `name` from here as `prefab` when a type has several prefabs (ship vs ferry, airplane vs blimp).
+- `transportPrefabs`: every loaded `TransportInfo`, with `transportType`, `vehicleType`, `defaultForType`, net and station services, `unlocked`, `unlock`, and `creatableByBridge`.
+  - `unlocked` is `UnlockManager.Unlocked(m_UnlockMilestone)`: the test the Public Transport panel uses to enable the line tool button (`GeneratedScrollPanel.CreateAssetItem`), and the one `transit-line-create` enforces. `TransportTool` itself does no unlock check.
+  - `unlock` explains it: `lineTool` (same as `unlocked`), `milestone` (`name`, `type` (the milestone class, e.g. `BuildingCountMilestone`), `title`, `passed`, `hasData`, `passedCount`, `canRelock`, `progress` (the game's localized `description`/`text`, `current`, `max`), and for a `BuildingCountMilestone` `requires` (`buildingsOf` service/sub-service, `level`, `targetCount`); for a `CombinedMilestone`, its `requirePassed`/`forbidPassed` milestones), and the `service`/`subService` of the prefab's class with `serviceUnlocked`/`subServiceUnlocked` (`UnlockManager.Unlocked(Service/SubService)`, which gate the panel and its tab). The tab's DLC special cases (`UnlockManager.Feature` gates in `PTGroupInfo.IsSubServiceUnlocked`) are not reported. Use a `name` from here as `prefab` when a type has several prefabs (ship vs ferry, airplane vs blimp).
 - `facilities[]`: every `PublicTransport` building.
   - `id`, `prefab`, `subService`, `ai` (the AI class name), `lineType` and `secondaryLineType`, `subBuilding`, `active`, `angleDegrees`, `problems`, `position`.
   - For depots: `maxVehicleCount` and `vehicleCount` (`DepotAI.GetVehicleCount`). For stations: `passengerCount` (`TransportStationAI.GetPassengerCount`).
@@ -809,7 +943,8 @@ Returns:
 }
 ```
 
-- Give `transportType` (one of `Bus`, `Metro`, `Train`, `Ship`, `Airplane`, `Tram`, `Monorail`, `CableCar`, `Trolleybus`; this uses `TransportManager.GetTransportInfo(type)`) or `prefab` (an exact `TransportInfo` name). The prefab must be unlocked.
+- Give `transportType` (one of `Bus`, `Metro`, `Train`, `Ship`, `Airplane`, `Tram`, `Monorail`, `CableCar`, `Trolleybus`; this uses `TransportManager.GetTransportInfo(type)`) or `prefab` (an exact `TransportInfo` name). The prefab must be unlocked (`UnlockManager.Unlocked(m_UnlockMilestone)`, the line-tool button's test); a refusal returns `unlock` (as in `/state/transit` `transportPrefabs`) and names the milestone and its requirement.
+- `ignoreUnlock: true` skips that unlock check. Default false. The response (dry run and live) carries `unlockIgnored` (true only when the prefab was locked and the check was skipped), and a live call adds a warning. If the milestone requires a depot or station, the line has no vehicles until one exists.
 - `stops` needs 2 to 64 points, in travel order. Do not repeat the first stop: the line is closed back to it automatically. A last stop that snaps onto the first stop is dropped (`droppedDuplicateClosingStop: true`). Any other stop that snaps onto the first stop is an error.
 - Optional: `name`, `color` (`#RRGGBB`), `budget` (per-line percent, 0..500), `roadSnapDistance` (default 32, max 128), `stationSnapDistance` (default 64, max 256).
 

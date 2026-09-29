@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8">
+  <title>Portville chat</title>
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0d1521; color: #edf4fc; }
+    header { position: sticky; top: 0; padding: 16px; background: #172537; border-bottom: 1px solid #30445a; z-index: 1; }
+    h1 { margin: 0 0 6px; font-size: 18px; }
+    #status { font-size: 13px; color: #a9b7c8; }
+    #status.online { color: #6ee7a2; }
+    main { min-height: calc(100dvh - 151px); padding: 14px 14px 90px; }
+    .message { max-width: 90%; margin: 0 0 12px; padding: 10px 13px; border-radius: 14px; white-space: pre-wrap; line-height: 1.35; overflow-wrap: anywhere; }
+    .player { margin-left: auto; background: #2463a6; }
+    .ai { margin-right: auto; background: #23354a; }
+    .update { background: #1a3040; color: #c1d9e8; font-size: 13px; }
+    .meta { display: block; font-size: 10px; opacity: .65; margin-top: 5px; }
+    form { position: fixed; inset: auto 0 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); display: flex; gap: 8px; background: #172537; border-top: 1px solid #30445a; }
+    input { flex: 1; min-width: 0; padding: 12px; border: 1px solid #52677d; border-radius: 9px; background: #0d1521; color: white; font: inherit; }
+    button { border: 0; border-radius: 9px; padding: 0 17px; background: #4c9ff2; color: #081626; font-weight: 700; }
+    button:disabled { opacity: .5; }
+  </style>
+</head>
+<body>
+  <header><h1>Portville · Codex chat</h1><div id="status">Connecting…</div></header>
+  <main id="messages" aria-live="polite"></main>
+  <form id="form"><input id="input" aria-label="Message" placeholder="Message Codex…" autocomplete="off" maxlength="4000"><button id="send">Send</button></form>
+  <script>
+    const token = new URL(location.href).searchParams.get('token');
+    const messages = document.getElementById('messages');
+    const status = document.getElementById('status');
+    const input = document.getElementById('input');
+    const send = document.getElementById('send');
+    const endpoint = (path) => `${path}?token=${encodeURIComponent(token)}`;
+    let signature = '';
+    async function refresh() {
+      try {
+        const [stateResponse, historyResponse] = await Promise.all([
+          fetch(endpoint('/api/state'), { cache: 'no-store' }),
+          fetch(endpoint('/api/history'), { cache: 'no-store' }),
+        ]);
+        const state = await stateResponse.json();
+        status.textContent = state.online ? 'AI online · Portville connected' : state.gameLoaded ? 'AI reconnecting…' : 'Game offline · waiting for Portville';
+        status.className = state.online ? 'online' : '';
+        if (!historyResponse.ok) return;
+        const history = await historyResponse.json();
+        const entries = history.entries || [];
+        const next = entries.map((entry) => `${entry.id}:${entry.text}`).join('|');
+        if (next === signature) return;
+        const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
+        signature = next;
+        messages.replaceChildren(...entries.map((entry) => {
+          const box = document.createElement('div');
+          box.className = `message ${entry.from === 'player' ? 'player' : 'ai'} ${entry.kind === 'update' ? 'update' : ''}`;
+          box.textContent = entry.text;
+          const meta = document.createElement('span');
+          meta.className = 'meta';
+          meta.textContent = `${entry.from === 'player' ? 'You' : 'Codex'} · ${new Date(entry.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+          box.append(meta);
+          return box;
+        }));
+        if (nearBottom) window.scrollTo(0, document.body.scrollHeight);
+      } catch { status.textContent = 'Phone connection offline'; status.className = ''; }
+    }
+    document.getElementById('form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      send.disabled = true;
+      try {
+        const response = await fetch(endpoint('/api/send'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+        if (!response.ok) throw new Error('send failed');
+        input.value = '';
+        await refresh();
+      } catch { status.textContent = 'Could not send · check game connection'; }
+      finally { send.disabled = false; input.focus(); }
+    });
+    refresh(); setInterval(refresh, 2500);
+  </script>
+</body>
+</html>

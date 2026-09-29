@@ -243,6 +243,7 @@ test("cs1_transit_line_create forwards a valid request and surfaces bridge error
       color: "#FF8800",
       budget: 120,
       roadSnapDistance: 40,
+      ignoreUnlock: true,
       dryRun: true,
     };
     const parsed = JSON.parse(textOf(await client.callTool({ name: "cs1_transit_line_create", arguments: args })));

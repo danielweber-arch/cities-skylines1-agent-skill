@@ -82,3 +82,4 @@ capacity, owned tiles. No zone-safe road upgrade, no roundabout primitive, no un
 on `place-building`.
 
 - M1 (2026-09-27): reuse tmp/tampa/m1/m1.py (`clean` collision guard, `find_sites`, `road_guard` footprint check for new roads/lines) and freesites.py instead of rewriting them; pipe and power every new road before zoning; check a new line's length against the drawn loop.
+- W1 + Blue West (2026-09-27): the biggest loss was building services on 474 lane-less build-grid roads and only finding out from RoadNotConnected 20 minutes later; probe new roads with tmp/tampa/w1/laneprobe.py right after every build-grid, and repair with touch.py. Second: guards built on one capped `/state/networks` or `/state/facilities` call (5,000 rows) — page by service. Third: zoning jobs ahead of homes left 32 parkway shops with NoWorkers; stage commercial with residential.

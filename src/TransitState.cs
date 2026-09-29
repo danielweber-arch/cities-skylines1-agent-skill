@@ -369,6 +369,7 @@ namespace SkylinesAgentBridge
                 json.Append(",\"netService\":\"").Append(info.m_netService.ToString()).Append("/").Append(info.m_netSubService.ToString()).Append("\"");
                 json.Append(",\"stationService\":\"").Append(info.m_stationService.ToString()).Append("/").Append(info.m_stationSubService.ToString()).Append("\"");
                 json.Append(",\"unlocked\":").Append(JsonUtil.Bool(unlock == null || unlock.Unlocked(info.m_UnlockMilestone)));
+                json.Append(",\"unlock\":").Append(UnlockReport.TransportUnlockJson(info));
                 json.Append(",\"creatableByBridge\":").Append(JsonUtil.Bool(TransitCommands.IsCreatableType(info.m_transportType)));
                 json.Append("}");
             }
