@@ -1,4 +1,4 @@
-# Portville Phase 4 plan: finish P4 (52k → 55k+), Central Park kept and grown, set up P5
+# Portville Phase 4 plan: finish P4 (52k → 55k+), Central Park kept at its size and rebuilt as NYC, set up P5
 
 Revised 2026-09-29 from the player's five in-game screenshots (game date 13/10/2049), `portville-master-plan.md` (§6 P4, §10) and `progress-portville.md`. The bridge was not reachable when this was written. The first builder session re-measures §0 live before acting, and `scripts/phase4-orchestrator.sh` can refresh the whole plan from a live snapshot.
 
@@ -58,6 +58,10 @@ The first live read confirms or clears each of these.
 
 > "Make sure phase 4 preserves and expands upon Central Park. Do not put any residential/commercial/industrial zoning in Central Park."
 
+> "Do not change the size of Central Park." [P, 2026-09-29, later: overrides any growth step below]
+
+**Size lock:** Central Park keeps exactly the footprint it has today. Nothing is added to it and nothing is taken from it. "Expands upon" now means richer content inside the park (the NYC replica, §1.4), not more land.
+
 Central Park is a **district** in the live save, painted just east and northeast of Downtown District [S]. The land inside and around it is mostly open, and a few buildings stand near its label. The bridge reads district names but not district paint, so step CP0 below records the boundary before any other Phase 4 command runs.
 
 ### 1.1 Hard rules (every command, every builder, every phase from now on)
@@ -102,7 +106,7 @@ Central Park is a **district** in the live save, painted just east and northeast
    - 0 R/C/I/O growables inside, or each remaining one is listed and awaiting the player;
    - the boundary is written in `city.md`.
 
-### 1.3 CP1–CP4 Expand Central Park (runs alongside the workstreams in §2)
+### 1.3 CP1–CP4 Enrich Central Park inside its boundary (runs alongside the workstreams in §2)
 
 - **CP1 Fill the park.** On empty land inside the boundary:
   - place `Regular Park`, `Regular Plaza` and `Regular Playground`;
@@ -111,11 +115,7 @@ Central Park is a **district** in the live save, painted just east and northeast
 
   Validate every lot first with `validate:true`. Paths end at road edges, lane-linked (the promenade lesson, progress 2026-09-27 21:4x).
   - Accept when every placement is Active with no problems.
-- **CP2 Grow outward**, now toward the NYC replica footprint in §1.4. Survey the footprint with `/state/growables` and `/state/zones`, and add to the park the lots that are unzoned or empty.
-  - Proposed target: at least one 80 m block on each side that has free land [E; set after CP0 measures the park].
-  - Occupied homes or shops are taken only with the player's OK in chat, as in the City Hall precedent.
-  - Update the boundary polygon in `city.md` after each addition.
-  - Accept when the park area has grown, the new boundary is recorded, and the CP0 audit passes on the new boundary.
+- **CP2 Grow outward: WITHDRAWN** by the size lock (§1). The park keeps its current footprint.
 - **CP3 Make it a destination.** Park-type uniques go in Central Park as they unlock: `Botanical garden`, `Tropical Garden`, `Official Park`, `Expensive Plaza`.
   - Commercial uniques (`shopping_center`, `department_store`, `hypermarket`, `Posh Mall`) stay outside the boundary.
   - Accept when each placed unique is Active and connected: no RoadNotConnected.
@@ -129,7 +129,7 @@ Central Park is a **district** in the live save, painted just east and northeast
 
 > "Model Central Park after Central Park in NYC. Make it a very similar replica."
 
-This section replaces CP2's "one block on each side" growth target. Central Park grows into a scaled copy of Manhattan's Central Park, keeping its shape, layout and landmarks. CP1–CP4 still apply, and the §1.1 hard rules still hold.
+The NYC layout is fitted **inside Central Park's current boundary**. The size lock in §1 applies: no land is added or removed. CP1, CP3 and CP4 still apply, CP2 is withdrawn, and the §1.1 hard rules still hold.
 
 **The real park** [W, sources at the end of this section]:
 - **Size:** 843 acres (about 3.4 km²), about 2.5 mi long (≈ 4.0 km) and 0.5 mi wide (≈ 0.8 km), so roughly **5 : 1**.
@@ -137,14 +137,17 @@ This section replaces CP2's "one block on each side" growth target. Central Park
 - **Transverse roads:** four sunken roads at **65th, 79th, 86th and 97th** carry cross-town traffic below the park's surface.
 - **Drives:** East, West, Center and Terrace Drives have been car-free since June 27, 2018.
 
-**Scale and siting (decided at CP0, from the live survey):**
-- **Scale factor k:** the largest of **1 : 1** (4,020 × 800 m), **1 : 1.5** (2,680 × 535 m) or **1 : 2** (2,010 × 400 m) whose rectangle fits on open land without demolishing developed blocks. The screenshots show large open land east and south-east of the city inside the highway loop [S]. Keep the 5 : 1 ratio whatever the scale.
-- **Siting:** the existing Central Park district is the **south end**. Downtown District sits against it the way Midtown sits against 59th Street. The long axis runs away from downtown across open land. Record the south-west corner S and the unit vectors u (south → north along the axis) and v (west → east) in `city.md`.
+**Fitting it to the existing park (decided at CP0, from the live boundary):**
+- **Axis:** the park's longest dimension is the NYC north–south axis. The end nearest Downtown District is 59th Street, the way Midtown sits against the real park. Record the south-west corner S, the unit vectors u (along the length, away from downtown) and v (across it, "west" → "east"), the length L and the width W, all in `city.md`.
+- **Scale:** each axis is scaled on its own to fill the existing footprint: k_u = L / 4,020 m along the length and k_v = W / 800 m across it. If the park is not 5 : 1, the layout stretches or squeezes to fit it; **the boundary never moves**.
+- **Irregular boundary:** if the painted district is not a rectangle, use the largest rectangle inside it for the table below. The corners outside that rectangle become extra lawn or woodland.
 - **Street → position:** Manhattan streets run about 20 per mile, so one street ≈ 80 m. A feature at street n, at a fraction f of the width from the west edge (0 = CPW, 1 = Fifth Ave), goes at
 
-  **P = S + u · (n − 59) · 80 · k + v · f · 800 · k**
+  **P = S + u · (n − 59) · 80 · k_u + v · f · W**
 
   with P in game metres. Check every lot with a `validate:true` dry run before placing it.
+- **Small park:** if L comes out under about 600 m, features closer together than 60 m merge. Keep, in this order: the loop path, Bethesda and the Lake, the Mall, the Great Lawn, the Reservoir, Belvedere. Drop the rest before crowding them.
+- **Transverses:** only if there is room for them *under* the park (a tunnel prefab). None may widen or cut the footprint.
 
 **Layout, south to north** (the in-game stand-ins are the vanilla prefabs this repo has already used; check each against `/prefabs/buildings` live):
 
@@ -176,7 +179,8 @@ This section replaces CP2's "one block on each side" growth target. Central Park
 
 **Loop drives (car-free):** one path loop runs just inside the boundary, like East and West Drives, as `Pedestrian Pavement`. Paths end at road edges and are lane-linked (the promenade lesson). The transverse roads pass *under* the path loop.
 
-**Perimeter, outside the boundary:**
+**Perimeter, outside the boundary (existing edge roads first):**
+- Use the park's current edge roads as the avenue stand-ins. Upgrade or add a road only on land outside the park; never shift the boundary to make room.
 - A Fifth Ave stand-in on the east edge and a Central Park West stand-in on the west edge: `Medium Road` or larger, per the road hierarchy. South and north edge roads stand in for 59th and 110th.
 - Frontage across those roads: `ResidentialHigh` and `Office` only, which is allowed and raises land value. Never inside the park.
 
@@ -189,7 +193,7 @@ This section replaces CP2's "one block on each side" growth target. Central Park
 4. **Sub-building uniques.** Some uniques refuse bridge placement, as the Airport did. The player places those.
 
 **Build order:**
-1. Pin S, u, v and k at CP0 (`city.md`).
+1. Pin S, u, v, L, W, k_u and k_v at CP0 (`city.md`). Record the park's area from the boundary polygon; it is the size to hold.
 2. Build the perimeter roads with their corner roundabouts, then the path loop.
 3. Mark the lawns: unzone them and leave them empty.
 4. Place the Mall, Bethesda, Strawberry Fields and Conservatory Water / Garden.
@@ -201,7 +205,7 @@ This section replaces CP2's "one block on each side" growth target. Central Park
 Save after each step. Capture the park (`size` = 1.2 × its length, mode `None`) after steps 2, 4 and 7, and compare against a Central Park map.
 
 **Accept when:**
-- the boundary rectangle has the 5 : 1 shape at the chosen k;
+- the park's boundary and area are unchanged from CP0;
 - it has 0 zoned cells;
 - the loop path is one pedestrian component;
 - every table row is either built or listed as player work in `TODOS.md`;
@@ -259,7 +263,7 @@ CP1–CP4 run alongside, in quiet periods between the bigger builds.
 - Airport and Harbor each ≤ 1 transfer to the Promenade (line stop lists); modal share ≥ 10%.
 - **Central Park:**
   - 0 zoned cells and 0 R/C/I/O growables inside the recorded boundary;
-  - area larger than at CP0;
+  - boundary and area unchanged from CP0 (size lock);
   - every entrance within 300 m of a transit stop;
   - no polluter within 300 m.
 - Save `Portville` overwritten, and its mtime newer than the last command.

@@ -12,8 +12,8 @@ Map: new map, highways + mainline only | Save file: Portville | Started: 2026-09
 ## Protected areas
 
 ### Central Park [player directive 2026-09-29]
-Preserve and expand it. Inside its boundary every zone cell stays `Unzoned`: no R, C, I or Office, from any command, stager, repair tool or the chat assistant. No roads through it, no demolition of its park buildings, metro only underneath, no polluter within 300 m. Full rules and the expansion steps: `portville-phase4-plan.md` §1.
-- Model: a scaled replica of New York's Central Park (player directive 2026-09-29): 5:1 rectangle, sunken transverse roads only, car-free loop path, NYC features at their street positions. Layout: `portville-phase4-plan.md` §1.4. Axis (S, u, v, scale k): NOT YET RECORDED.
+Preserve it at its CURRENT SIZE (player 2026-09-29: "do not change the size of Central Park"); expand its content, never its land. Inside its boundary every zone cell stays `Unzoned`: no R, C, I or Office, from any command, stager, repair tool or the chat assistant. No surface car roads through it (sunken transverses only), no demolition of its park buildings, metro only underneath, no polluter within 300 m. Full rules and the expansion steps: `portville-phase4-plan.md` §1.
+- Model: a replica of New York's Central Park fitted inside the current boundary (player directive 2026-09-29): sunken transverse roads only, car-free loop path, NYC features at their street positions. Layout: `portville-phase4-plan.md` §1.4. Axis and fit (S, u, v, L, W, k_u, k_v, area): NOT YET RECORDED.
 - Where: a district named "Central Park", painted just east and northeast of Downtown District (player screenshots, game 13/10/2049).
 - Boundary: NOT YET RECORDED. Phase 4 step CP0 records it here (polygon corners, edge segment ids, park building ids) before any other Phase 4 command.
 
