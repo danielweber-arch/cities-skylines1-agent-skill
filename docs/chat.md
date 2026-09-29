@@ -142,8 +142,31 @@ The first turn prints a `session_id` (`--output-format json`). The script saves 
 `tmp/chat-bridge/session-id` and passes `--resume <id>` on later turns, so the
 conversation continues across messages and across restarts of the script. If a resume
 fails, the script starts a new conversation. Each turn's raw output goes to
-`tmp/chat-bridge/turn-<id>.json`. While a turn runs, a background heartbeat keeps the
-window from showing "offline". Ctrl-C sets the status to `offline`.
+`tmp/chat-bridge/turn-<id>.json`. While a turn runs, a background watcher keeps the
+window from showing "offline" and immediately answers any new message with a short
+"Got message #N, finishing #M first" line, so the player knows it was received.
+Ctrl-C (or a launchd stop) sets the status to `offline` at once.
+
+The loop is built to run unattended:
+
+- If the game is not running, it waits for the bridge instead of exiting.
+- If the game restarts (chat ids reset to 1), it notices and reads the inbox from the start.
+- A turn that runs longer than `--turn-timeout` (default 900 s) is stopped, along with
+  its child processes, and the player gets a reply saying so.
+
+### Always on (macOS)
+
+```bash
+./scripts/install-chat-bridge-agent.sh install    # start now, at every login, and after any exit
+./scripts/install-chat-bridge-agent.sh status     # loaded? pid? last log lines
+./scripts/install-chat-bridge-agent.sh logs       # follow ~/Library/Logs/cs1-chat-bridge.log
+./scripts/install-chat-bridge-agent.sh restart
+./scripts/install-chat-bridge-agent.sh uninstall
+```
+
+Options after `install` are passed through (`install --model sonnet`). Run `install` from
+a terminal where `claude`, `jq`, `curl` and `npx` work; the agent keeps that PATH. Do not
+also run an interactive session that watches the chat, or both will answer.
 
 On startup the script answers every message that has no reply yet, including ones
 sent before it started. It answers only messages typed in the game window. Messages

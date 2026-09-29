@@ -19,6 +19,7 @@
 #                           by default only messages typed in the game panel are answered
 #   --new-session           start a fresh Claude conversation instead of resuming the last one
 #   --wait SECONDS          long-poll length per request, 1..30 (default: 25)
+#   --turn-timeout SECONDS  stop a Claude turn that runs longer than this, >= 60 (default: 900)
 #   -h, --help              show this help
 #
 # The `say` and `status` forms post one line to the panel and exit; the headless Claude uses
@@ -26,6 +27,12 @@
 #
 # Needs curl, jq and the claude CLI (override the binary with CLAUDE_BIN=/path/to/claude).
 # Ctrl-C sets the panel's status to offline.
+#
+# The loop is meant to run unattended: it waits for the game instead of exiting when the
+# bridge is down, picks up again after the game restarts, acknowledges messages that arrive
+# while Claude is busy, and stops any turn that exceeds --turn-timeout. To keep it running
+# in the background on macOS (restarted on crash and at login), use
+# ./scripts/install-chat-bridge-agent.sh.
 #
 set -euo pipefail
 
@@ -36,6 +43,7 @@ PERMISSION_MODE="dontAsk"
 ACCEPT_API=0
 NEW_SESSION=0
 WAIT=25
+TURN_TIMEOUT=900
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 
 usage() { awk 'NR <= 2 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0" | sed '${/^$/d;}'; }
@@ -46,6 +54,7 @@ log() { echo "[chat-bridge $(date +%H:%M:%S)] $*" >&2; }
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 state_dir="${CHAT_BRIDGE_STATE_DIR:-$repo/tmp/chat-bridge}"
 session_file="$state_dir/session-id"
+acked_file="$state_dir/acked-ids"
 
 api_get() { curl -sS --fail-with-body --max-time "$((WAIT + 10))" "${BASE}$1"; }
 api_post() { curl -sS --fail-with-body --max-time 15 -X POST -H 'Content-Type: application/json' --data "$2" "${BASE}$1"; }
@@ -99,6 +108,7 @@ while [ $# -gt 0 ]; do
         --accept-api)      ACCEPT_API=1 ;;
         --new-session)     NEW_SESSION=1 ;;
         --wait)            need $# "$1"; WAIT="$2"; shift ;;
+        --turn-timeout)    need $# "$1"; TURN_TIMEOUT="$2"; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -108,6 +118,8 @@ BASE="${BASE%/}"
 
 case "$WAIT" in ''|*[!0-9]*) echo "--wait must be a whole number of seconds" >&2; exit 2 ;; esac
 [ "$WAIT" -ge 1 ] && [ "$WAIT" -le 30 ] || { echo "--wait must be 1..30" >&2; exit 2; }
+case "$TURN_TIMEOUT" in ''|*[!0-9]*) echo "--turn-timeout must be a whole number of seconds" >&2; exit 2 ;; esac
+[ "$TURN_TIMEOUT" -ge 60 ] || { echo "--turn-timeout must be at least 60" >&2; exit 2; }
 case "$PERMISSION_MODE" in
     bypassPermissions) log "warning: bypassPermissions lets the headless Claude run any command a player message talks it into." ;;
 esac
@@ -124,45 +136,100 @@ mkdir -p "$state_dir"
 if [ "$NEW_SESSION" = 1 ]; then
     rm -f "$session_file"
 fi
+: >"$acked_file"
 
-api_get "/health" >/dev/null || die "the bridge at $BASE is not answering. Start Cities: Skylines with the mod enabled."
+# Block until the bridge answers. The game may not be running yet or may be restarting;
+# waiting (rather than exiting) keeps a supervised loop from crash-looping.
+wait_for_bridge() {
+    local waited=0
+    until curl -sS --fail --max-time 5 "${BASE}/health" >/dev/null 2>&1; do
+        if [ $((waited % 60)) -eq 0 ]; then
+            log "waiting for the bridge at $BASE (start Cities: Skylines with the mod enabled)"
+        fi
+        sleep 5
+        waited=$((waited + 5))
+    done
+}
+
+wait_for_bridge
 
 # --- shutdown -------------------------------------------------------------------
 
-heartbeat_pid=""
+watcher_pid=""
+turn_pid=""
+poll_pid=""
 
-stop_heartbeat() {
-    if [ -n "$heartbeat_pid" ]; then
-        kill "$heartbeat_pid" 2>/dev/null || true
-        wait "$heartbeat_pid" 2>/dev/null || true
-        heartbeat_pid=""
+# Stop a process and its direct children (claude's MCP servers), escalating to KILL.
+stop_tree() {
+    local pid="$1"
+    [ -n "$pid" ] || return 0
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill -TERM "$pid" 2>/dev/null || true
+    local n=0
+    while kill -0 "$pid" 2>/dev/null && [ "$n" -lt 20 ]; do
+        sleep 0.5
+        n=$((n + 1))
+    done
+    pkill -KILL -P "$pid" 2>/dev/null || true
+    kill -KILL "$pid" 2>/dev/null || true
+}
+
+stop_watcher() {
+    if [ -n "$watcher_pid" ]; then
+        kill "$watcher_pid" 2>/dev/null || true
+        wait "$watcher_pid" 2>/dev/null || true
+        watcher_pid=""
     fi
 }
 
 shutdown() {
     trap - INT TERM
-    stop_heartbeat
+    [ -n "$poll_pid" ] && kill "$poll_pid" 2>/dev/null
+    stop_watcher
+    stop_tree "$turn_pid"
     post_status offline "chat-bridge stopped"
     log "stopped; panel status set to offline"
     exit 130
 }
 trap shutdown INT TERM
-# Never leave the heartbeat loop orphaned, whatever ends the script.
-trap stop_heartbeat EXIT
+# Never leave the watcher orphaned, whatever ends the script.
+trap stop_watcher EXIT
 
-# While a Claude turn runs no inbox poll happens, so keep the panel from declaring Claude
-# offline (it does that after 120 s without a chat call).
-start_heartbeat() {
+# While a Claude turn runs the main loop is not polling, so this watcher does two jobs.
+# Its long polls count as heartbeats, which keeps the panel from declaring Claude offline
+# (it does that after 120 s without a chat call). And every message that arrives meanwhile
+# gets an immediate "queued" line, so the player knows it was received. Each message is
+# acknowledged once, even if it waits through several turns. Children run in the
+# background and are waited on, so a TERM stops the watcher at once, not after a poll.
+start_watcher() {
+    local busy_id="$1"
     (
-        nap=""
-        trap '[ -n "$nap" ] && kill "$nap" 2>/dev/null; exit 0' TERM
+        child=""
+        trap '[ -n "$child" ] && kill "$child" 2>/dev/null; exit 0' TERM
+        after="$busy_id"
+        inbox_file="$state_dir/watcher-inbox.json"
         while :; do
-            sleep 30 & nap=$!
-            wait "$nap"
-            curl -sS --max-time 5 "${BASE}/chat/status" >/dev/null 2>&1 || true
+            curl -sS --fail --max-time 25 "${BASE}/chat/inbox?after=${after}&wait=20&unanswered=true" \
+                >"$inbox_file" 2>/dev/null & child=$!
+            if ! wait "$child"; then
+                child=""
+                sleep 5 & child=$!
+                wait "$child" || true
+                child=""
+                continue
+            fi
+            child=""
+            for id in $(jq -r '.messages[].id' "$inbox_file" 2>/dev/null || true); do
+                case "$id" in ''|*[!0-9]*) continue ;; esac
+                grep -qx "$id" "$acked_file" 2>/dev/null && continue
+                echo "$id" >>"$acked_file"
+                post_say update "Got message #$id. Finishing #$busy_id first, then I'll pick this up." "$id" || true
+            done
+            next=$(jq -r '.lastId // empty' "$inbox_file" 2>/dev/null || true)
+            case "$next" in ''|*[!0-9]*) ;; *) [ "$next" -gt "$after" ] && after="$next" ;; esac
         done
     ) &
-    heartbeat_pid=$!
+    watcher_pid=$!
 }
 
 # --- the Claude turn ----------------------------------------------------------------
@@ -215,22 +282,55 @@ Entity selected in game when sent ("this"/"here" usually means it): ${selected}
 EOF
 }
 
+run_limited() {
+    # $1 output file, rest: claude arguments. Runs one claude invocation, stopping it after
+    # TURN_TIMEOUT seconds so a stuck turn can never freeze the chat. Returns claude's exit
+    # code, or 124 if it was stopped.
+    local out="$1"
+    shift
+    rm -f "$out.timeout"
+    (cd "$repo" && exec "$CLAUDE_BIN" "$@") >"$out" 2>"$out.err" &
+    local pid=$!
+    turn_pid=$pid
+    (
+        nap=""
+        trap '[ -n "$nap" ] && kill "$nap" 2>/dev/null; exit 0' TERM
+        sleep "$TURN_TIMEOUT" & nap=$!
+        wait "$nap"
+        touch "$out.timeout"
+        stop_tree "$pid"
+    ) &
+    local guard=$!
+    local rc=0
+    wait "$pid" || rc=$?
+    turn_pid=""
+    kill "$guard" 2>/dev/null || true
+    wait "$guard" 2>/dev/null || true
+    if [ -f "$out.timeout" ]; then
+        rm -f "$out.timeout"
+        return 124
+    fi
+    return "$rc"
+}
+
 run_claude() {
     # $1 prompt, $2 output file. Resumes the saved conversation when there is one.
-    local prompt="$1" out="$2" session=""
+    local prompt="$1" out="$2" session="" rc=0
     local -a args=(-p "$prompt" --output-format json --permission-mode "$PERMISSION_MODE" --allowedTools "${allowed_tools[@]}")
     [ -n "$MODEL" ] && args+=(--model "$MODEL")
     [ -f "$session_file" ] && session=$(cat "$session_file")
 
     if [ -n "$session" ]; then
-        if (cd "$repo" && "$CLAUDE_BIN" "${args[@]}" --resume "$session") >"$out" 2>"$out.err"; then
-            return 0
+        run_limited "$out" "${args[@]}" --resume "$session" || rc=$?
+        # A timed-out turn is not a broken session; keep it and do not run the turn twice.
+        if [ "$rc" = 0 ] || [ "$rc" = 124 ]; then
+            return "$rc"
         fi
         log "resuming session $session failed; starting a new conversation"
         rm -f "$session_file"
     fi
 
-    (cd "$repo" && "$CLAUDE_BIN" "${args[@]}") >"$out" 2>"$out.err"
+    run_limited "$out" "${args[@]}"
 }
 
 handle_message() {
@@ -249,11 +349,14 @@ handle_message() {
     post_status thinking "reading message #$id"
 
     out="$state_dir/turn-$id.json"
-    start_heartbeat
+    start_watcher "$id"
     local rc=0
     run_claude "$(build_prompt "$message")" "$out" || rc=$?
-    stop_heartbeat
-    if [ "$rc" = 0 ]; then
+    stop_watcher
+    if [ "$rc" = 124 ]; then
+        log "#$id: stopped after ${TURN_TIMEOUT} s"
+        reply="That took longer than $((TURN_TIMEOUT / 60)) min, so I stopped. The progress lines above show what got done. Ask me to continue, or split it into smaller steps."
+    elif [ "$rc" = 0 ]; then
         is_error=$(jq -r '.is_error // false' "$out" 2>/dev/null || echo true)
         reply=$(jq -r '.result // empty' "$out" 2>/dev/null || true)
         session=$(jq -r '.session_id // empty' "$out" 2>/dev/null || true)
@@ -278,19 +381,57 @@ handle_message() {
 
 # --- main loop ----------------------------------------------------------------------
 
+last=0
+
+# The chat store lives in the game's memory, so message ids restart at 1 when the game
+# restarts. A stale `last` would then skip every new message; start over instead.
+resync() {
+    local latest
+    latest=$(curl -sS --fail --max-time 5 "${BASE}/chat/status?heartbeat=false" 2>/dev/null |
+        jq -r '.latestId // empty' 2>/dev/null || true)
+    case "$latest" in ''|*[!0-9]*) return 0 ;; esac
+    if [ "$latest" -lt "$last" ]; then
+        log "the game restarted (chat ids reset); reading the inbox from the start"
+        last=0
+        : >"$acked_file"
+    fi
+}
+
 log "watching ${BASE}/chat/inbox (Ctrl-C to stop)"
 post_status idle "chat-bridge is listening"
 
-last=0
+poll_file="$state_dir/inbox.json"
+failures=0
 while :; do
-    if ! response=$(api_get "/chat/inbox?after=${last}&wait=${WAIT}&unanswered=true"); then
-        log "inbox poll failed; retrying in 5 s"
-        sleep 5
+    # Poll in the background and wait on it, so Ctrl-C or a launchd stop runs the shutdown
+    # trap at once instead of after the long poll ends.
+    api_get "/chat/inbox?after=${last}&wait=${WAIT}&unanswered=true" >"$poll_file" 2>/dev/null &
+    poll_pid=$!
+    poll_rc=0
+    wait "$poll_pid" || poll_rc=$?
+    poll_pid=""
+    response=$(cat "$poll_file" 2>/dev/null || true)
+    if [ "$poll_rc" != 0 ]; then
+        failures=$((failures + 1))
+        if [ "$failures" -ge 3 ]; then
+            log "lost the bridge; waiting for the game to come back"
+            wait_for_bridge
+            resync
+            post_status idle "chat-bridge is listening"
+            log "bridge is back; watching again"
+            failures=0
+        else
+            sleep 2
+        fi
         continue
     fi
+    failures=0
 
-    new_last=$(printf '%s' "$response" | jq -r '.lastId // empty')
-    count=$(printf '%s' "$response" | jq '.messages | length')
+    count=$(printf '%s' "$response" | jq '.messages | length' 2>/dev/null || true)
+    case "$count" in
+        ''|*[!0-9]*) log "unexpected inbox response; retrying"; sleep 2; continue ;;
+    esac
+    new_last=$(printf '%s' "$response" | jq -r '.lastId // empty' 2>/dev/null || true)
 
     i=0
     while [ "$i" -lt "$count" ]; do
@@ -303,5 +444,8 @@ while :; do
         i=$((i + 1))
     done
 
-    [ -n "$new_last" ] && [ "$new_last" -gt "$last" ] && last="$new_last"
+    case "$new_last" in
+        ''|*[!0-9]*) ;;
+        *) [ "$new_last" -gt "$last" ] && last="$new_last" ;;
+    esac
 done
