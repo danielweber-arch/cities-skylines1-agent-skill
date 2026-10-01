@@ -10,7 +10,12 @@ Control a running Cities: Skylines 1 city on macOS through the local Skylines Ag
 ## Core Rules
 
 - Read `lessons.md` Proven Rules before building. They are binding and override this file where they differ.
-- Restate every player instruction in one line, with the tool calls it triggers, before the first mutation it causes. Standing orders go into `city.md` under `## Standing orders`.
+- Restate every player instruction in one line, with the tool calls it triggers, before the first mutation it causes. Standing orders go into the city's `city.md` (`cities/<slug>/`) under `## Standing orders`, as prose plus machine lines the checker enforces: `- NO-BUILD <name>: bbox <minX>,<minZ> <maxX>,<maxZ>` or `polygon x,z;x,z;...`, and `- MAX-SPEND <n>`.
+- Call `cs1_city_context` at session start and after any load/restart; work only from that city's `cities/<slug>/` dir (`cities/README.md` has the layout) and create it from `templates/city/` when missing, never reuse another city's files. Every mutation tool refuses if the loaded city differs from the session's declared one - stop and re-read context.
+- Every `cs1_build_*`, `cs1_connect` (road prefabs only), `cs1_place_building`, `cs1_set_zone` and `cs1_stamp_layout` call runs the plan checker inline before touching the bridge; a `plan check blocked` HARD error is a plan error to fix in `city.md`, never something to retry around. Advisories ride along in the response under `planCheck`. `cs1_check_plan` previews a plan without committing.
+- Sample a whole district with `cs1_terrain_map` before choosing a bbox, not dozens of point calls; only `.` cells are buildable, `~`/`?`/`^` are out.
+- `cs1_segment_route_share` on the worst rows from `cs1_state_traffic` shows who currently uses a segment (route membership, not throughput; a truncated response is a sample, not a total).
+- Use `cs1_stamp_layout` (`dryRun` first) for interchanges and roundabouts instead of hand coordinates; template names are in `templates/layouts/README.md`. A partial failure lists what was built - repair that before anything else. Geometry is UNVERIFIED IN GAME until the first live stamp.
 - Prefer API state over image recognition. Plan from state, verify with vision, never the reverse.
 - Never build in water. Sample with `cs1_terrain_sample` before choosing a bbox or endpoint; the bridge refuses ground pieces and footprints over water (see Water gate below) and the MCP tools cannot override it. A refusal means re-plan or ask the player.
 - Every mutation (build, connect, zone, repair-zone-clusters, bulldoze, transit, policy) is dry-run first, then run, then proven with a state read. Nothing is reported done before the API shows it.
@@ -65,6 +70,7 @@ Helper scripts (all take `--base-url`, default `http://127.0.0.1:32123`, except 
 | Bounded stub repair | `./scripts/repair-road-anomalies.sh --dry-run` first, then without it |
 | Time-series logging | `./scripts/log-city-parameters.sh` |
 | Render an area | `./scripts/review.sh <x> <z> [size] [mode]` |
+| Before/after measurement | `scripts/bench-run.sh` + `scripts/bench-score.mjs` - never on a user's save, it copies to `bench-*.crp` |
 
 The API answers from the main menu, so a refused connection means the mod is not loaded — not
 that the city is still loading. `/health` reports `levelLoaded:false` until a city is open, and
@@ -90,6 +96,11 @@ curl is the fallback for debugging the bridge itself.
 | Is the bridge up, is a city loaded | `cs1_health` |
 | Where does the city stand | `cs1_state_summary`, `cs1_state_demand`, `cs1_state_zones`, `cs1_state_economy` |
 | Is this point on water, how high is the ground | `cs1_terrain_sample` (up to 64 points per call) |
+| Map a whole district at once | `cs1_terrain_map` (ascii grid, `.`/`^`/`~`/`?`, plus indicative water flow) |
+| Which city am I in, where is its context dir | `cs1_city_context` (call first, every session) |
+| Check a plan before building it | `cs1_check_plan`; build/zone/connect/layout tools already run it inline |
+| Stamp a proven interchange/roundabout template | `cs1_stamp_layout` (`dryRun` first) |
+| Who currently uses a congested segment | `cs1_segment_route_share` (route membership, not throughput) |
 | What is broken | `cs1_state_problems`, `cs1_state_road_anomalies`, `cs1_state_zone_anomalies`, `cs1_state_building_anomalies`, `cs1_state_external_connections` |
 | Talk with the player in the game | `cs1_chat_*` (see `docs/chat.md`) |
 | What exists | `cs1_state_networks`, `cs1_state_facilities`, `cs1_state_growables` |

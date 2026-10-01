@@ -35,9 +35,11 @@ Bridge: `http://127.0.0.1:32123`. Both `127.0.0.1` and `::1` are bound.
 
 ## Step 0: Preflight
 
-Read, in this order, from the repo root: `lessons.md` (proven rules override your instincts),
-`knowledge.md` (verified CS1 mechanics), then `city.md` and `progress.md` if they exist. The
-repo's `CLAUDE.md` is the mayor's standing orders; it applies on top of this skill.
+Read, in this order: `lessons.md` (proven rules override your instincts), `knowledge.md`
+(verified CS1 mechanics), then call `cs1_city_context` and read that city's `city.md` and
+`progress.md` from `cities/<slug>/` if they exist (create the dir from `templates/city/` when
+missing - never reuse another city's files). The repo's `CLAUDE.md` is the mayor's standing
+orders; it applies on top of this skill.
 
 ```bash
 curl -sS --max-time 2 http://127.0.0.1:32123/health
@@ -51,8 +53,9 @@ curl -sS --max-time 2 http://127.0.0.1:32123/health
   returns 409 until then.
 - `ok:true, levelLoaded:true` → continue.
 
-If `city.md` already exists in the working directory, ask: **resume it** (default) or **start a
-new brief**. Resume means: read `progress.md`, identify the current phase, continue from there.
+If `city.md` already exists in that city's `cities/<slug>/` dir, ask: **resume it** (default) or
+**start a new brief**. Resume means: read `progress.md`, identify the current phase, continue
+from there.
 
 **Standing orders.** Restate every instruction the player gives (in the prompt or the in-game
 chat) in one line with the tool calls it will trigger, before the first mutation it causes. An
@@ -97,7 +100,8 @@ Dispatch three Opus subagents at once, blind to each other, each with `WebSearch
    `cs1_state_networks service:Road` (existing highway prefabs and their end positions),
    `cs1_state_facilities`, `cs1_state_growables`, `cs1_state_economy`,
    `cs1_prefabs_roads`, `cs1_prefabs_buildings` filtered by service for each must-have, and
-   `cs1_terrain_sample` on an 80 m lattice over every candidate bbox (64 points per call).
+   `cs1_terrain_map` over every candidate bbox (one call replaces the point lattice; only `.`
+   cells are buildable).
    Return: the highway entry point(s), a buildable bbox estimate with every `hasWater:true`
    point listed and the bbox trimmed so none is inside it, the shoreline (shoreDistance < 80 m)
    points, the exact prefab strings to use, and current funds if the summary carries them.
@@ -187,33 +191,37 @@ For each phase, in this order every time:
    bbox corners and every planned endpoint; any `hasWater:true` point means the block is moved or
    shrunk in `city.md` (an `## Amendments` line) before anyone builds. Re-read the live network in
    that bbox (`cs1_state_networks`, by prefab and id); another hand may have changed it.
-3. **Dispatch** one Opus subagent with that block, the `## Standing orders` and open orders
+3. **Review gate**, before dispatch: run `skills/cs1-city/review-gate.md` as a Sonnet subagent
+   (`model: "sonnet"`) with the phase's `## Standing orders` text, the player's last instruction,
+   and the `cs1_check_plan` verdict for the phase's plan. Any standing-order conflict is a HARD
+   stop - fix the plan or ask the player; do not dispatch.
+4. **Dispatch** one Opus subagent with that block, the `## Standing orders` and open orders
    verbatim, the site survey, the prefab strings, and the rules below. It builds; it does not
    decide acceptance and it never grants or relays an approval.
-4. **Verify** yourself: `cs1_state_problems`, `cs1_state_road_anomalies` (includeDeadEnds=false),
+5. **Verify** yourself: `cs1_state_problems`, `cs1_state_road_anomalies` (includeDeadEnds=false),
    `cs1_state_zone_anomalies`, `cs1_state_building_anomalies`, `cs1_state_external_connections`,
    and every build response's `waterCheck.onWater == false`. A `Cannot build on water` refusal is
    a plan error: move the point in `city.md`, cross with an elevated/bridge or tunnel prefab and
    `elevation` on both points, or ask the player. The MCP tools cannot override the guard.
    Then `cs1_capture` once (`mode=None` after roads/zoning, `Water`/`Electricity` after
    utilities, `Traffic` after 2+ weeks). Vision confirms; it never plans.
-5. **Fix** what the checks found: bulldoze offenders by id, rebuild with `cs1_build_network`
+6. **Fix** what the checks found: bulldoze offenders by id, rebuild with `cs1_build_network`
    (or `cs1_connect` for a utility), repaint with `cs1_repair_zone_clusters
    preferGrowableZone:true`. Every repair call, including `cs1_bulldoze` and
    `cs1_repair_zone_clusters`, is `dryRun:true` first and proven by a state read after. Re-run
    the checks and overwrite the working save after each verified fix round. Three failed fix
    rounds on the same acceptance line = stuck (see Step 5).
-6. **Let the sim run**: `cs1_set_simulation_speed paused:false speed:3`, wait ~60–120 s wall
+7. **Let the sim run**: `cs1_set_simulation_speed paused:false speed:3`, wait ~60–120 s wall
    clock, re-read `cs1_state_summary` and confirm `gameTime` advanced. Pause again
    (`paused:true`) before the next round of construction so the budget is not draining during
    planning.
-7. **Save**: overwrite the one working save with `cs1_save name:"<save>"`, then `cs1_state_saves` until the file is listed (it
+8. **Save**: overwrite the one working save with `cs1_save name:"<save>"`, then `cs1_state_saves` until the file is listed (it
    appears a few seconds after the call). Read `saveName` from the response: names are
    sanitised server-side. Say "saved" only after that read.
-8. **Record**: tick the phase in `city.md`; in `progress.md` write the passing values under
+9. **Record**: tick the phase in `city.md`; in `progress.md` write the passing values under
    `acceptance`, the created ids under `createdEntities`, the save under `saves`, and bump
    `currentPhase`. Commit `city.md` + `progress.md` (their git history is the run's debug log).
-9. **Learn**: append to `lessons.md` after every phase, every failure, and every surprise, in
+10. **Learn**: append to `lessons.md` after every phase, every failure, and every surprise, in
    the file's Situation / Action / Result (with numbers) / Rule format. A lesson confirmed
    twice moves up to Proven Rules. A contradicted rule is marked superseded, never deleted.
    Never repeat a failed approach without a written reason in `lessons.md`.

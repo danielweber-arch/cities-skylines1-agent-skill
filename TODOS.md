@@ -3,6 +3,92 @@
 Findings and follow-ups. `[x]` means fixed and verified in this repo; the rest are real but
 deliberately out of scope, with enough context to pick up cold.
 
+## Wave 2 (2026-10-01, uncommitted working tree): transport and master-planning tools
+
+New in this wave: `GET /state/terrain/grid` + `cs1_terrain_map`, `GET /state/segment-route-share`
++ `cs1_segment_route_share`, the plan checker (`cs1_check_plan`, inline on every build/zone/
+connect/layout tool), `cs1_stamp_layout` + `templates/layouts/**`, per-city context dirs
+(`cs1_city_context`, `cities/<slug>/`), the `city` block on `GET /health` and
+`GET /state/summary`, and `bench/**`. Everything below is unverified live (game not running
+2026-10-01); see `docs/api.md` "MCP tools: plan checker, layouts, per-city context" for the
+reference.
+
+- [ ] **Live verification owed, next loaded game.** `GET /state/terrain/grid` against the in-game
+  Water overlay at a known shoreline; `GET /state/segment-route-share` against the Routes overlay
+  on a known congested segment; `/health` and `/state/summary` `city` block after a load and
+  again after a save (id stability, `gameDate`, `population`); the `still` flow threshold
+  (`speed < 0.1` water-sim units, `src/TerrainGridState.cs`, see `docs/api.md` GET
+  /state/terrain/grid) against what the water actually looks like at that reading; whether
+  `SavePanel.m_LastSaveName` (read by reflection) holds a usable name after a load, not just a
+  save; whether district 0's `m_populationData.m_finalCount` (the `city.population` field) matches
+  the UI population counter.
+- [ ] **`/health`'s `city` block is read off the game thread, not the simulation thread**
+  (`src/ApiServer.cs` ~line 203), so it can be at most one frame stale. Decide once live whether
+  that staleness is acceptable for per-city routing decisions, or whether it needs to queue onto
+  the sim thread like the state routes do.
+- [ ] **`lastSaveName` could report the wrong city's save.** If `SavePanel.m_LastSaveName` is
+  empty (never set this process) the field falls back to the bridge's own last `/commands/save`
+  name; after loading city B without saving, a stale "city A" name could still be read. Low risk
+  (`LoadPanel` sets the field on load per the field's own purpose) but unverified in game.
+- [ ] **Layout templates: geometry UNVERIFIED IN GAME.** All 9 `templates/layouts/*.json` pass the
+  offline `validate.py` only. The cloverleaf/parclo loop ramps are straight chords with no
+  curvature modelling. No `Highway Elevated` / `Highway Ramp Elevated` prefab string is confirmed
+  anywhere in this repo (grep came back empty 2026-10-01); the three highway x arterial
+  interchange templates (`diamond`, `parclo`, `cloverleaf`) work around this by elevating the
+  crossing arterial (`Medium Road Elevated`, confirmed) instead and using node `elevation` on
+  ground-prefab `Highway Ramp` pieces, matching the Portville IC precedent
+  (`cities/portville/lessons.md`-via-root-`lessons.md`, 2026-09-27). Fix: at the first live
+  session, confirm the real elevated highway/ramp prefab names via `cs1_prefabs_roads` and switch
+  the templates if they exist.
+- [ ] **`cities/tampa/city.md` is synthesized**, not migrated: no root `city.md`/brief ever existed
+  for Tampa, only `tampa-master-plan.md` (now `plan.md`), `transit-progress.md` (now
+  `progress.md`) and `transit-review.md`. Needs the player's review against the real save once
+  `cs1_city_context` binds `cities/tampa/`. All three city dirs (`ashford`, `portville`, `tampa`)
+  carry `id: unknown, bindOnLoad: true` until the first `cs1_city_context` call with that game
+  loaded binds them by name. Central Park's boundary (`cities/portville/city.md` `## Protected
+  areas`) is still **NOT YET RECORDED** - a commented-out `NO-BUILD Central Park: bbox ...`
+  placeholder only; Phase 4 step CP0 must measure the real polygon/bbox before it can be
+  uncommented and enforced.
+- [ ] **`bench/manifest.json`'s `expect.cityName`/population ranges are all `null`**; fill at the
+  first live run per scenario, never guess. Bench live runs are entirely UNVERIFIED - `--help` and
+  syntax checks only. `cashBalance` is read from `GET /state/areas` `cash`, not `/state/economy`
+  (which the wave-2 spec's literal endpoint list named but which carries tax rates only, no cash
+  field) - a deliberate, documented deviation (`bench/README.md` "Known gaps"); `extractMetrics`
+  already prefers an `economy.cashBalance`/`economy.cash` field if one is ever added, so no code
+  change would be needed to adopt it, only the extra `/state/areas` fetch could then be dropped.
+- [ ] **Plan checker limits, by design, not bugs.** Building footprints (H-WATER, H-NOBUILD) are
+  checked only when a plan gives `widthCells`/`lengthCells`; a position-only building plan relies
+  on the bridge's own water/footprint guard as the backstop. H-CROSSING downgrades to ADVISORY
+  ("network too large to check; rely on road-anomalies after build") when `/state/networks`
+  `total` exceeds the rows returned (today under 5,000; see TODOS "Open - not done" `/state/
+  networks` cap item above). A-SEWAGE flow direction is read from an instantaneous water-sim
+  sample and is indicative only, never a HARD rule.
+- [ ] **`cs1_build_grid`/`cs1_build_neighborhood`'s plan-checker approximation is coarser than the
+  real build.** The checker sees whole row/column lines, not the per-cell pieces the bridge
+  actually creates, so H-CROSSING/H-TURN scan a slightly larger shape than what gets built:
+  conservative for H-WATER/H-NOBUILD, but can occasionally over-report a crossing a real piecewise
+  build would avoid by snapping to a mid-line node (found by agent B during wave 2, see
+  `docs-B.md` handoff). Fix for a future wave: decompose the grid plan into per-cell segments to
+  match bridge behavior exactly.
+- [x] **`cs1_stamp_layout` posted the wrong batch shape and could not report a partial build.** The first version POSTed `{items:[{type:"build-network"}]}` and read `results[].id`; the bridge's contract (`src/BatchCommands.cs`, `docs/api.md` POST /commands/batch) is `{dryRun, stopOnError, commands:[{type:"build-road", ...}]}`, at most 32 per call, with `results[].result.segmentId`, so every real stamp would have failed with "Unsupported command type" and the 40-piece cloverleaf exceeded the limit. Fixed in `mcp-server/src/stamp.ts` (chunked to 32, `stopOnError:true`, `built.known:false` when a batch CALL throws since the bridge executes sequentially, `repair` line), the mock mirrors the real contract, and `test/wave2.test.js` drives a real mid-batch failure (fixture `t-fail`) end to end plus the >32 chunking case. Found by the blind Cursor review (gpt-5.6-sol-high) and by running every shipped template through the stamp.
+- [ ] **Untracked nested symlink `cities-skylines1-agent-skill -> /Users/Work/cities-skylines1-agent-skill`**
+  at the repo root (confirmed present, not created by this wave - predates it). A tool that
+  recurses the repo tree without symlink guards could loop forever on it. Decide: remove it, or
+  add it to `.gitignore` so it never gets staged.
+- [x] **Blind refute-only review of the wave 2 diff (Cursor gpt-5.6-sol-high, three prompts: C#, checker core, MCP tools; grok not used, the change is not security/money/irreversible).** Every detection was verified against the source before acting. Fixed: (1) route-share counted a vehicle whose route continued past the 64-unit hop cap as fully scanned (`src/SegmentRouteShare.cs`: now `hopCapped`, excluded from `scanned`); (2) `lastSaveName` could report city A's bridge save after loading city B (`src/CityIdentity.cs`: the remembered name is keyed by `m_gameInstanceIdentifier`); (3) flow `still` was the speed of the mean vector, so two opposing currents read as still, and an unsampled region read as still (`src/TerrainGridState.cs`: mean of per-cell speeds, `sampled`, `still:null` when unsampled, per-region `bbox`); (4) three tool responses sliced JSON at their cap (`mcp-server/src/cap.ts` `capJson`: drop optional fields, trim arrays with counts, never slice; `test/caps.test.js`); (5) HARD water findings were one line per 8 m sample so a wet 40-piece layout produced 6.3 KB (`checker.ts` collapses per entity with a count, citations once per rule: 651 chars now); (6) a HARD-blocked stamp came back as a successful tool result (`planTools.ts`: now `ERROR: plan check blocked`); (7) city binding: a city.md with no `id:` line was "bound" without being rewritable, two same-name `id: unknown` dirs bound whichever `readdir` listed last, and a failed rewrite still reported `bound:true` (`cityContext.ts`: explicit `id: unknown` only, ambiguity returns null with `resolveNote`, rewrite read back); (8) H-NOBUILD missed areas thinner than the 8 m sample spacing and areas inside a footprint with no corner; H-TURN missed turns between separate 2-point roads (every stamp piece and every `cs1_build_network`); H-CROSSING blocked legitimate elevated crossings and skipped entirely when `/state/networks` was incomplete; `build_grid`/`build_neighborhood` plans were whole lines (false crossings at real lattice nodes); `cs1_connect` for roads checked only the `from` point; bbox corners were not normalised; only the first standing-orders section was parsed; a caller-supplied `standingOrders` replaced the city's; an incomplete terrain response let a build pass; the root `city.md` stub was a fallback for standing orders (all in `mcp-server/src/checker.ts`, `planGuard.ts`, `tools/commands.ts`, tests in `test/checker.test.js`, 81/81 pass). Still open from the review, logged below.
+- [ ] **Review detections left open (verified real, not fixed in this wave).** (a) The route-share and grid reads run on the main thread without a snapshot of the vehicle/path-unit and water buffers while the simulation thread writes them: stale reads are accepted, a torn read that pairs an old `m_path` with a reused path unit is possible and unmeasured; verify live and consider `SimulationManager.AddAction`. (b) The session city guard is not atomic: a load between the guard's `/health` read and the POST is not caught; acceptable for a human-paced game, document it. (c) Wide roads: the checker samples the centreline only; a six-lane road hugging a shoreline can pass with its edge in water (the bridge guard is the backstop, same limit as TODOS "Water guard limits still open"). (d) `cs1_place_building` has no `widthCells`/`lengthCells`, so inline footprint checks are position-only; add them from `cs1_prefabs_buildings` sizes. (e) Grid flow `"."` means the 5 samples are dry, not the whole 64 m cell; a pond between samples is invisible, use `cell:16` near shores. (f) `checked.points` counts samples, segment counts pieces; `A-SEWAGE` membership uses the region bbox, not the exact cells.
+- [ ] **`npm test` now runs under `node --import tsx`** (`mcp-server/package.json`) because `test/checker.test.js` imports `tools/commands.ts`, whose `.js`-suffixed imports plain Node cannot resolve; `npm run typecheck` is unchanged.
+### Central Park protection (2026-09-29) - status update
+
+The "Zoning tools have no exclusion zones" item below is now partly addressed: the plan checker's
+H-NOBUILD rule refuses any road sample, building position/corner, or zone circle inside a
+standing-order `NO-BUILD` polygon/bbox, and is wired inline into `cs1_set_zone` and every build
+tool with no opt-out - **once Central Park's boundary is recorded** as a machine `NO-BUILD` line
+in `cities/portville/city.md` (still outstanding, see above). `repair-zone-clusters` and any
+non-MCP script (e.g. `tmp/portville/p2/stager.py`) are NOT covered by the checker, since they do
+not call through `cs1_*` tools. The "No district-bounds read" item is still fully open; nothing in
+this wave reads `DistrictManager.m_districtGrid`.
+
 ## Water guard and skill audit (2026-09-30, uncommitted working tree)
 
 - [x] **No code guard against building in water.** Every network path (`build-network`, `build-grid`, `build-neighborhood`, `connect`, batch) set node y from `SampleRawHeightSmoothWithWater` and created the node unconditionally (`src/NodeHelper.cs:163`, `src/RoadCommands.cs:39-40`); `place-building` validated only Shoreline prefabs (`src/BuildingCommands.cs:49`) and `move-building` checked nothing. Impact: a ground road or service building over a river was created floating on the water surface. Fix: `src/WaterGuard.cs` (new) refuses ground roads, train/metro track and pedestrian paths whose endpoint (elevation under 1 m) or centreline is on water, and building footprints (centre + 4 corners) on water, with `Cannot build on water: ...`; `allowWater:true` is accepted on the raw HTTP body only (not exposed through the MCP tools); bridges, tunnels, dams, pipes, power lines, quays, canals, ship/ferry paths and Shoreline/OnWater buildings are exempt. Dry runs run the same check; responses carry `waterCheck`. Compiles (mcs, scratchpad); **unverified in game**: first use must be a dry run of a `Basic Road` across a river (expect `Cannot build on water`) and one along a dry block (expect `waterCheck.onWater:false`).

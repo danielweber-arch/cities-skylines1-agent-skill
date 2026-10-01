@@ -17,8 +17,10 @@ Goal: raise the share of trips made by public transport, without breaking what a
    pedestrian paths, problem-solving method). Where it disagrees with the code in `transit.md`,
    the code wins.
 3. `knowledge.md`: general CS1 mechanics.
-4. `transit-review.md` and `transit-progress.md` in the repo root if they exist (resume them),
-   and `city.md` `## Standing orders` if a city plan exists: those orders bind this skill too.
+4. Call `cs1_city_context` first; work only from that city's `cities/<slug>/` dir (create it from
+   `templates/city/` if missing). Read `transit-review.md` and `transit-progress.md` there if
+   they exist (resume them), and `city.md` `## Standing orders`: those orders bind this skill too.
+   If the loaded city ever differs from the session's declared one, stop and re-read context.
 
 ## The user's standing rule: add to the existing transport, never change it
 
@@ -61,6 +63,7 @@ MCP first (`cs1_*`), curl fallback (endpoints in `docs/api.md`, "Public transpor
 |---|---|
 | All lines, stops, vehicles, budgets, ridership, stations | `cs1_state_transit` / `GET /state/transit?includeStops=true` |
 | Congested roads | `cs1_state_traffic` / `GET /state/traffic` |
+| Who currently uses a congested segment | `cs1_segment_route_share` (route membership, not throughput; a truncated response is a sample) |
 | Active policies | `cs1_state_policies` / `GET /state/policies` |
 | New line | `cs1_transit_line_create` / `POST /commands/transit-line-create` |
 | Edit line (stops, budget, name, color) | `cs1_transit_line_edit` / `POST /commands/transit-line-edit` |
@@ -114,6 +117,9 @@ risk. The orchestrator merges them into `transit-review.md` under `## Findings` 
 `## Change plan`, ordered by expected impact per cost.
 
 ## Step 2: change in small verified batches
+
+For a corridor or station/interchange change, run `/cs1-traffic` (`skills/cs1-traffic/SKILL.md`,
+a Sonnet review gate) before the real call and stop on any standing-order conflict.
 
 For each batch (at most 3 line changes, or 1 new line, or 1 policy/budget change):
 

@@ -75,6 +75,7 @@ Verified game mechanics. Treat as true until lessons.md proves otherwise.
 - Pipe coverage in practice: a building that stays dry is typically more than about 95-100 m from the nearest pipe; this is an observed radius in this repo, not a documented constant (lessons.md:284, 704).
 - A Water facility (tower, pumping station, treatment plant) connects only through its own pipe node (`m_netNode`); probe with a dry-run `connect` (toService Water, roadPrefab Water Pipe, maxDistance 45) before piping, and never release that node (lessons.md:18).
 - Never `connect` toService Road from a Roadside building; it drives a stub road through the building's own footprint. Place the building 1-3 m off the road instead (lessons.md:16).
+- Tooling added 2026-10-01: a whole-district ascii terrain/water map (`GET /state/terrain/grid`, `cs1_terrain_map`), a plan checker run inline before every build/zone/connect/layout call (`cs1_check_plan`), proven interchange/roundabout templates (`cs1_stamp_layout`), current route membership on a segment (`GET /state/segment-route-share`, `cs1_segment_route_share`), and per-city context directories (`cs1_city_context`, `cities/<slug>/`) so terrain, plan, and route data stay scoped to the right map and save. No new game-mechanics claims; see docs/api.md "MCP tools: plan checker, layouts, per-city context" for the full reference.
 
 ## Water and sewage (pumps and pipes)
 - Pumps go upstream. Sewage goes downstream, ideally at a map edge where water flows off.
