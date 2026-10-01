@@ -1,0 +1,246 @@
+{
+  "name": "cargo-hub-frontage",
+  "version": 1,
+  "description": "A Medium Road collector with a Basic Road frontage loop serving truck docks, plus a parallel Train Track spur, for a cargo/industrial hub block.",
+  "geometryStatus": "UNVERIFIED IN GAME",
+  "anchor": "anchor = centre of the layout; +z = main axis at angleDeg 0; angleDeg rotates clockwise seen from above (standard CS1 angle convention used by place-building angleDegrees)",
+  "roles": {
+    "main": {
+      "default": "Medium Road",
+      "allowed": [
+        "Medium Road",
+        "Large Road"
+      ]
+    },
+    "frontage": {
+      "default": "Basic Road",
+      "allowed": [
+        "Basic Road"
+      ]
+    },
+    "rail": {
+      "default": "Train Track",
+      "allowed": [
+        "Train Track"
+      ]
+    }
+  },
+  "nodes": {
+    "Main_W": {
+      "x": -300,
+      "z": 0,
+      "elevation": 0
+    },
+    "Main_E": {
+      "x": 300,
+      "z": 0,
+      "elevation": 0
+    },
+    "Frontage_W": {
+      "x": -200,
+      "z": 60,
+      "elevation": 0
+    },
+    "Frontage_Mid": {
+      "x": 0,
+      "z": 60,
+      "elevation": 0
+    },
+    "Frontage_E": {
+      "x": 200,
+      "z": 60,
+      "elevation": 0
+    },
+    "Link_W": {
+      "x": -200,
+      "z": 0,
+      "elevation": 0
+    },
+    "Link_E": {
+      "x": 200,
+      "z": 0,
+      "elevation": 0
+    },
+    "RailIn": {
+      "x": -300,
+      "z": 150,
+      "elevation": 0
+    },
+    "RailSpur": {
+      "x": 0,
+      "z": 150,
+      "elevation": 0
+    },
+    "RailOut": {
+      "x": 300,
+      "z": 150,
+      "elevation": 0
+    },
+    "Link_W_Link_E_s1_i1": {
+      "x": -100.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "Link_W_Link_E_s1_i2": {
+      "x": 0.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "Link_W_Link_E_s1_i3": {
+      "x": 100.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "Frontage_W_Frontage_Mid_s4_i1": {
+      "x": -100.0,
+      "z": 60.0,
+      "elevation": 0.0
+    },
+    "Frontage_Mid_Frontage_E_s5_i1": {
+      "x": 100.0,
+      "z": 60.0,
+      "elevation": 0.0
+    },
+    "RailIn_RailSpur_s7_i1": {
+      "x": -200.0,
+      "z": 150.0,
+      "elevation": 0.0
+    },
+    "RailIn_RailSpur_s7_i2": {
+      "x": -100.0,
+      "z": 150.0,
+      "elevation": 0.0
+    },
+    "RailSpur_RailOut_s8_i1": {
+      "x": 100.0,
+      "z": 150.0,
+      "elevation": 0.0
+    },
+    "RailSpur_RailOut_s8_i2": {
+      "x": 200.0,
+      "z": 150.0,
+      "elevation": 0.0
+    }
+  },
+  "segments": [
+    {
+      "from": "Main_W",
+      "to": "Link_W",
+      "role": "main",
+      "name": "collector west approach"
+    },
+    {
+      "from": "Link_W",
+      "to": "Link_W_Link_E_s1_i1",
+      "role": "main",
+      "name": "collector through"
+    },
+    {
+      "from": "Link_W_Link_E_s1_i1",
+      "to": "Link_W_Link_E_s1_i2",
+      "role": "main",
+      "name": "collector through"
+    },
+    {
+      "from": "Link_W_Link_E_s1_i2",
+      "to": "Link_W_Link_E_s1_i3",
+      "role": "main",
+      "name": "collector through"
+    },
+    {
+      "from": "Link_W_Link_E_s1_i3",
+      "to": "Link_E",
+      "role": "main",
+      "name": "collector through"
+    },
+    {
+      "from": "Link_E",
+      "to": "Main_E",
+      "role": "main",
+      "name": "collector east approach"
+    },
+    {
+      "from": "Link_W",
+      "to": "Frontage_W",
+      "role": "frontage",
+      "name": "frontage connector west"
+    },
+    {
+      "from": "Frontage_W",
+      "to": "Frontage_W_Frontage_Mid_s4_i1",
+      "role": "frontage",
+      "name": "frontage road segment 1"
+    },
+    {
+      "from": "Frontage_W_Frontage_Mid_s4_i1",
+      "to": "Frontage_Mid",
+      "role": "frontage",
+      "name": "frontage road segment 1"
+    },
+    {
+      "from": "Frontage_Mid",
+      "to": "Frontage_Mid_Frontage_E_s5_i1",
+      "role": "frontage",
+      "name": "frontage road segment 2"
+    },
+    {
+      "from": "Frontage_Mid_Frontage_E_s5_i1",
+      "to": "Frontage_E",
+      "role": "frontage",
+      "name": "frontage road segment 2"
+    },
+    {
+      "from": "Frontage_E",
+      "to": "Link_E",
+      "role": "frontage",
+      "name": "frontage connector east"
+    },
+    {
+      "from": "RailIn",
+      "to": "RailIn_RailSpur_s7_i1",
+      "role": "rail",
+      "name": "rail spur approach"
+    },
+    {
+      "from": "RailIn_RailSpur_s7_i1",
+      "to": "RailIn_RailSpur_s7_i2",
+      "role": "rail",
+      "name": "rail spur approach"
+    },
+    {
+      "from": "RailIn_RailSpur_s7_i2",
+      "to": "RailSpur",
+      "role": "rail",
+      "name": "rail spur approach"
+    },
+    {
+      "from": "RailSpur",
+      "to": "RailSpur_RailOut_s8_i1",
+      "role": "rail",
+      "name": "rail spur through cargo block"
+    },
+    {
+      "from": "RailSpur_RailOut_s8_i1",
+      "to": "RailSpur_RailOut_s8_i2",
+      "role": "rail",
+      "name": "rail spur through cargo block"
+    },
+    {
+      "from": "RailSpur_RailOut_s8_i2",
+      "to": "RailOut",
+      "role": "rail",
+      "name": "rail spur through cargo block"
+    }
+  ],
+  "footprint": {
+    "minX": -320,
+    "maxX": 320,
+    "minZ": -20,
+    "maxZ": 170
+  },
+  "notes": [
+    "the frontage loop sits between the collector and the rail spur so truck docks and rail sidings can both front onto the block without crossing the collector.",
+    "no grade separation here: collector, frontage and rail are all at elevation 0, 60 m apart (collector-to-frontage) and 90 m (frontage-to-rail); widen if a real site's building footprints don't fit.",
+    "cargo building placement (e.g. a Cargo Hub / Cargo Train Terminal prefab) is not part of this road-only template; place it against the frontage loop after stamping this layout."
+  ]
+}

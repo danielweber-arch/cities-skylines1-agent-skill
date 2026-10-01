@@ -1,0 +1,219 @@
+{
+  "name": "collector-distributor",
+  "version": 1,
+  "description": "A Large Road collector-distributor running parallel to a Highway mainline, taking one entry ramp off the highway and feeding two local exits before rejoining, so weaving happens on the CD road instead of the mainline.",
+  "geometryStatus": "UNVERIFIED IN GAME",
+  "anchor": "anchor = centre of the layout; +z = main axis at angleDeg 0; angleDeg rotates clockwise seen from above (standard CS1 angle convention used by place-building angleDegrees)",
+  "roles": {
+    "main": {
+      "default": "Highway",
+      "allowed": [
+        "Highway"
+      ]
+    },
+    "ramp": {
+      "default": "Highway Ramp",
+      "allowed": [
+        "Highway Ramp"
+      ]
+    },
+    "cd": {
+      "default": "Large Road",
+      "allowed": [
+        "Large Road",
+        "Medium Road"
+      ]
+    }
+  },
+  "nodes": {
+    "Hwy_N": {
+      "x": 0,
+      "z": -300,
+      "elevation": 0
+    },
+    "Hwy_S": {
+      "x": 0,
+      "z": 300,
+      "elevation": 0
+    },
+    "CD_N": {
+      "x": 40,
+      "z": -220,
+      "elevation": 0
+    },
+    "CD_Mid1": {
+      "x": 40,
+      "z": -74,
+      "elevation": 0
+    },
+    "CD_Mid2": {
+      "x": 40,
+      "z": 74,
+      "elevation": 0
+    },
+    "CD_S": {
+      "x": 40,
+      "z": 220,
+      "elevation": 0
+    },
+    "RampOut1_local": {
+      "x": 120,
+      "z": -74,
+      "elevation": 0
+    },
+    "RampOut2_local": {
+      "x": 120,
+      "z": 74,
+      "elevation": 0
+    },
+    "Hwy_N_Hwy_S_s0_i1": {
+      "x": 0.0,
+      "z": -200.0,
+      "elevation": 0.0
+    },
+    "Hwy_N_Hwy_S_s0_i2": {
+      "x": 0.0,
+      "z": -100.0,
+      "elevation": 0.0
+    },
+    "Hwy_N_Hwy_S_s0_i3": {
+      "x": 0.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "Hwy_N_Hwy_S_s0_i4": {
+      "x": 0.0,
+      "z": 100.0,
+      "elevation": 0.0
+    },
+    "Hwy_N_Hwy_S_s0_i5": {
+      "x": 0.0,
+      "z": 200.0,
+      "elevation": 0.0
+    },
+    "CD_N_CD_Mid1_s1_i1": {
+      "x": 40.0,
+      "z": -147.0,
+      "elevation": 0.0
+    },
+    "CD_Mid1_CD_Mid2_s2_i1": {
+      "x": 40.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "CD_Mid2_CD_S_s3_i1": {
+      "x": 40.0,
+      "z": 147.0,
+      "elevation": 0.0
+    }
+  },
+  "segments": [
+    {
+      "from": "Hwy_N",
+      "to": "Hwy_N_Hwy_S_s0_i1",
+      "role": "main",
+      "name": "highway through (CD road runs alongside, not crossing)"
+    },
+    {
+      "from": "Hwy_N_Hwy_S_s0_i1",
+      "to": "Hwy_N_Hwy_S_s0_i2",
+      "role": "main",
+      "name": "highway through (CD road runs alongside, not crossing)"
+    },
+    {
+      "from": "Hwy_N_Hwy_S_s0_i2",
+      "to": "Hwy_N_Hwy_S_s0_i3",
+      "role": "main",
+      "name": "highway through (CD road runs alongside, not crossing)"
+    },
+    {
+      "from": "Hwy_N_Hwy_S_s0_i3",
+      "to": "Hwy_N_Hwy_S_s0_i4",
+      "role": "main",
+      "name": "highway through (CD road runs alongside, not crossing)"
+    },
+    {
+      "from": "Hwy_N_Hwy_S_s0_i4",
+      "to": "Hwy_N_Hwy_S_s0_i5",
+      "role": "main",
+      "name": "highway through (CD road runs alongside, not crossing)"
+    },
+    {
+      "from": "Hwy_N_Hwy_S_s0_i5",
+      "to": "Hwy_S",
+      "role": "main",
+      "name": "highway through (CD road runs alongside, not crossing)"
+    },
+    {
+      "from": "CD_N",
+      "to": "CD_N_CD_Mid1_s1_i1",
+      "role": "cd",
+      "name": "CD road segment 1"
+    },
+    {
+      "from": "CD_N_CD_Mid1_s1_i1",
+      "to": "CD_Mid1",
+      "role": "cd",
+      "name": "CD road segment 1"
+    },
+    {
+      "from": "CD_Mid1",
+      "to": "CD_Mid1_CD_Mid2_s2_i1",
+      "role": "cd",
+      "name": "CD road segment 2"
+    },
+    {
+      "from": "CD_Mid1_CD_Mid2_s2_i1",
+      "to": "CD_Mid2",
+      "role": "cd",
+      "name": "CD road segment 2"
+    },
+    {
+      "from": "CD_Mid2",
+      "to": "CD_Mid2_CD_S_s3_i1",
+      "role": "cd",
+      "name": "CD road segment 3"
+    },
+    {
+      "from": "CD_Mid2_CD_S_s3_i1",
+      "to": "CD_S",
+      "role": "cd",
+      "name": "CD road segment 3"
+    },
+    {
+      "from": "Hwy_N",
+      "to": "CD_N",
+      "role": "ramp",
+      "name": "entry ramp from highway onto CD road"
+    },
+    {
+      "from": "CD_Mid1",
+      "to": "RampOut1_local",
+      "role": "ramp",
+      "name": "CD road exit 1 to local street"
+    },
+    {
+      "from": "CD_Mid2",
+      "to": "RampOut2_local",
+      "role": "ramp",
+      "name": "CD road exit 2 to local street"
+    },
+    {
+      "from": "CD_S",
+      "to": "Hwy_S",
+      "role": "ramp",
+      "name": "CD road rejoins highway south"
+    }
+  ],
+  "footprint": {
+    "minX": -20,
+    "maxX": 140,
+    "minZ": -320,
+    "maxZ": 320
+  },
+  "notes": [
+    "CD road offset 40 m from the mainline is a placeholder spacing, not a measured clearance; widen if a real build's Highway + Large Road footprints overlap.",
+    "all pieces here are at grade (elevation 0): pair with diamond.json or parclo.json's crossDeck pattern if the CD road's own local exits need to cross another road.",
+    "knowledge.md Traffic: 'highway ramps too close together force weaving' -- the whole point of this template is to move that weaving off the mainline."
+  ]
+}

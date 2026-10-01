@@ -1,0 +1,313 @@
+{
+  "name": "parclo",
+  "version": 1,
+  "description": "Partial cloverleaf (parclo A-4 style): three direct diagonal ramps plus one loop ramp (NW) replacing a left-turn movement, Highway N-S crossed by a Medium Road arterial on an elevated deck.",
+  "geometryStatus": "UNVERIFIED IN GAME",
+  "anchor": "anchor = centre of the layout; +z = main axis at angleDeg 0; angleDeg rotates clockwise seen from above (standard CS1 angle convention used by place-building angleDegrees)",
+  "roles": {
+    "main": {
+      "default": "Highway",
+      "allowed": [
+        "Highway"
+      ]
+    },
+    "ramp": {
+      "default": "Highway Ramp",
+      "allowed": [
+        "Highway Ramp"
+      ]
+    },
+    "cross": {
+      "default": "Medium Road",
+      "allowed": [
+        "Medium Road"
+      ]
+    },
+    "crossDeck": {
+      "default": "Medium Road Elevated",
+      "allowed": [
+        "Medium Road Elevated",
+        "Medium Road"
+      ]
+    }
+  },
+  "nodes": {
+    "Hwy_N": {
+      "x": 0,
+      "z": -300,
+      "elevation": 0
+    },
+    "Hwy_N2": {
+      "x": 0,
+      "z": -100,
+      "elevation": 0
+    },
+    "Hwy_S2": {
+      "x": 0,
+      "z": 100,
+      "elevation": 0
+    },
+    "Hwy_S": {
+      "x": 0,
+      "z": 300,
+      "elevation": 0
+    },
+    "Cross_W": {
+      "x": -300,
+      "z": 0,
+      "elevation": 0
+    },
+    "Cross_RampW": {
+      "x": -100,
+      "z": 0,
+      "elevation": 8
+    },
+    "Cross_RampE": {
+      "x": 100,
+      "z": 0,
+      "elevation": 8
+    },
+    "Cross_E": {
+      "x": 300,
+      "z": 0,
+      "elevation": 0
+    },
+    "DirectNE_cross": {
+      "x": 60,
+      "z": -60,
+      "elevation": 4
+    },
+    "DirectSE_cross": {
+      "x": 60,
+      "z": 60,
+      "elevation": 4
+    },
+    "DirectSW_cross": {
+      "x": -60,
+      "z": 60,
+      "elevation": 4
+    },
+    "LoopNW_top": {
+      "x": -150,
+      "z": -150,
+      "elevation": 8
+    },
+    "LoopNW_base": {
+      "x": -250,
+      "z": -250,
+      "elevation": 0
+    },
+    "Hwy_N_Hwy_N2_s0_i1": {
+      "x": 0.0,
+      "z": -200.0,
+      "elevation": 0.0
+    },
+    "Hwy_N2_Hwy_S2_s1_i1": {
+      "x": 0.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "Hwy_S2_Hwy_S_s2_i1": {
+      "x": 0.0,
+      "z": 200.0,
+      "elevation": 0.0
+    },
+    "Cross_W_Cross_RampW_s3_i1": {
+      "x": -200.0,
+      "z": 0.0,
+      "elevation": 4.0
+    },
+    "Cross_RampW_Cross_RampE_s4_i1": {
+      "x": 0.0,
+      "z": 0.0,
+      "elevation": 8.0
+    },
+    "Cross_RampE_Cross_E_s5_i1": {
+      "x": 200.0,
+      "z": 0.0,
+      "elevation": 4.0
+    },
+    "Hwy_N2_LoopNW_top_s12_i1": {
+      "x": -75.0,
+      "z": -125.0,
+      "elevation": 4.0
+    },
+    "LoopNW_top_LoopNW_base_s13_i1": {
+      "x": -200.0,
+      "z": -200.0,
+      "elevation": 4.0
+    },
+    "LoopNW_base_Cross_W_s14_i1": {
+      "x": -266.67,
+      "z": -166.67,
+      "elevation": 0.0
+    },
+    "LoopNW_base_Cross_W_s14_i2": {
+      "x": -283.33,
+      "z": -83.33,
+      "elevation": 0.0
+    }
+  },
+  "segments": [
+    {
+      "from": "Hwy_N",
+      "to": "Hwy_N_Hwy_N2_s0_i1",
+      "role": "main",
+      "name": "highway north approach"
+    },
+    {
+      "from": "Hwy_N_Hwy_N2_s0_i1",
+      "to": "Hwy_N2",
+      "role": "main",
+      "name": "highway north approach"
+    },
+    {
+      "from": "Hwy_N2",
+      "to": "Hwy_N2_Hwy_S2_s1_i1",
+      "role": "main",
+      "name": "highway through crossing"
+    },
+    {
+      "from": "Hwy_N2_Hwy_S2_s1_i1",
+      "to": "Hwy_S2",
+      "role": "main",
+      "name": "highway through crossing"
+    },
+    {
+      "from": "Hwy_S2",
+      "to": "Hwy_S2_Hwy_S_s2_i1",
+      "role": "main",
+      "name": "highway south approach"
+    },
+    {
+      "from": "Hwy_S2_Hwy_S_s2_i1",
+      "to": "Hwy_S",
+      "role": "main",
+      "name": "highway south approach"
+    },
+    {
+      "from": "Cross_W",
+      "to": "Cross_W_Cross_RampW_s3_i1",
+      "role": "cross",
+      "name": "arterial rise (100 m, 8%)"
+    },
+    {
+      "from": "Cross_W_Cross_RampW_s3_i1",
+      "to": "Cross_RampW",
+      "role": "cross",
+      "name": "arterial rise (100 m, 8%)"
+    },
+    {
+      "from": "Cross_RampW",
+      "to": "Cross_RampW_Cross_RampE_s4_i1",
+      "role": "crossDeck",
+      "name": "arterial deck over highway"
+    },
+    {
+      "from": "Cross_RampW_Cross_RampE_s4_i1",
+      "to": "Cross_RampE",
+      "role": "crossDeck",
+      "name": "arterial deck over highway"
+    },
+    {
+      "from": "Cross_RampE",
+      "to": "Cross_RampE_Cross_E_s5_i1",
+      "role": "cross",
+      "name": "arterial descent (100 m, 8%)"
+    },
+    {
+      "from": "Cross_RampE_Cross_E_s5_i1",
+      "to": "Cross_E",
+      "role": "cross",
+      "name": "arterial descent (100 m, 8%)"
+    },
+    {
+      "from": "Hwy_N2",
+      "to": "DirectNE_cross",
+      "role": "ramp",
+      "name": "NE direct ramp"
+    },
+    {
+      "from": "DirectNE_cross",
+      "to": "Cross_RampE",
+      "role": "ramp",
+      "name": "NE ramp to arterial"
+    },
+    {
+      "from": "Hwy_S2",
+      "to": "DirectSE_cross",
+      "role": "ramp",
+      "name": "SE direct ramp"
+    },
+    {
+      "from": "DirectSE_cross",
+      "to": "Cross_RampE",
+      "role": "ramp",
+      "name": "SE ramp to arterial"
+    },
+    {
+      "from": "Hwy_S2",
+      "to": "DirectSW_cross",
+      "role": "ramp",
+      "name": "SW direct ramp"
+    },
+    {
+      "from": "DirectSW_cross",
+      "to": "Cross_RampW",
+      "role": "ramp",
+      "name": "SW ramp to arterial"
+    },
+    {
+      "from": "Hwy_N2",
+      "to": "Hwy_N2_LoopNW_top_s12_i1",
+      "role": "ramp",
+      "name": "NW loop ramp start"
+    },
+    {
+      "from": "Hwy_N2_LoopNW_top_s12_i1",
+      "to": "LoopNW_top",
+      "role": "ramp",
+      "name": "NW loop ramp start"
+    },
+    {
+      "from": "LoopNW_top",
+      "to": "LoopNW_top_LoopNW_base_s13_i1",
+      "role": "ramp",
+      "name": "NW loop ramp descent (100 m, 8%)"
+    },
+    {
+      "from": "LoopNW_top_LoopNW_base_s13_i1",
+      "to": "LoopNW_base",
+      "role": "ramp",
+      "name": "NW loop ramp descent (100 m, 8%)"
+    },
+    {
+      "from": "LoopNW_base",
+      "to": "LoopNW_base_Cross_W_s14_i1",
+      "role": "ramp",
+      "name": "NW loop ramp joins arterial"
+    },
+    {
+      "from": "LoopNW_base_Cross_W_s14_i1",
+      "to": "LoopNW_base_Cross_W_s14_i2",
+      "role": "ramp",
+      "name": "NW loop ramp joins arterial"
+    },
+    {
+      "from": "LoopNW_base_Cross_W_s14_i2",
+      "to": "Cross_W",
+      "role": "ramp",
+      "name": "NW loop ramp joins arterial"
+    }
+  ],
+  "footprint": {
+    "minX": -320,
+    "maxX": 320,
+    "minZ": -320,
+    "maxZ": 320
+  },
+  "notes": [
+    "one quadrant (NW) uses a loop ramp instead of a direct ramp; use this when land/budget rules out a full cloverleaf's four loops.",
+    "grade <= 8%: loop and direct ramps rise/descend over >=100 m runs (lessons.md:716); diagonal ramp lengths here (~85-140 m) are a compact placeholder, widen for a real build if the elevation delta needs more run."
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "_comment": [
+    "Bench scenarios for scripts/bench-run.sh and scripts/bench-score.mjs.",
+    "Candidate saves live in ~/Library/Application Support/Colossal Order/Cities_Skylines/Saves/.",
+    "NEVER modify the listed save files directly: bench-run.sh copies each to a",
+    "bench-<scenario>-<ts>.crp file before loading it.",
+    "expect.cityName and expect.populationMin/populationMax are null until the first live run:",
+    "the game is not running (2026-10-01), so nobody has read these saves' actual city identity",
+    "or population yet. Fill them in from the first real GET /health + /state/summary and do not",
+    "guess numbers here."
+  ],
+  "scenarios": [
+    {
+      "id": "tampa-transit",
+      "save": "TAmpa-transit-before.crp",
+      "cityDir": "cities/tampa",
+      "expect": {
+        "cityName": null,
+        "populationMin": null,
+        "populationMax": null,
+        "note": "fill at first live run; cities/tampa/city.md header currently reads name: TAmpa, id: unknown"
+      },
+      "settleDays": 7,
+      "samples": 5,
+      "sampleIntervalSec": 30,
+      "metrics": ["transitBoardingsLegs", "trafficFlowPercent", "population", "cashBalance", "problemsTotal", "despawnIndicator"]
+    },
+    {
+      "id": "transit-city",
+      "save": "Transit City.crp",
+      "cityDir": null,
+      "expect": {
+        "cityName": null,
+        "populationMin": null,
+        "populationMax": null,
+        "note": "fill at first live run; no cities/<slug> context dir mapped to this save yet (cityDir intentionally null)"
+      },
+      "settleDays": 7,
+      "samples": 5,
+      "sampleIntervalSec": 30,
+      "metrics": ["transitBoardingsLegs", "trafficFlowPercent", "population", "cashBalance", "problemsTotal", "despawnIndicator"]
+    },
+    {
+      "id": "ashford-p1",
+      "save": "Ashford-P1.crp",
+      "cityDir": "cities/ashford",
+      "expect": {
+        "cityName": null,
+        "populationMin": null,
+        "populationMax": null,
+        "note": "fill at first live run; cities/ashford/city.md header reads name: Ashford Transit, id: unknown"
+      },
+      "settleDays": 7,
+      "samples": 5,
+      "sampleIntervalSec": 30,
+      "metrics": ["transitBoardingsLegs", "trafficFlowPercent", "population", "cashBalance", "problemsTotal", "despawnIndicator"]
+    },
+    {
+      "id": "portville",
+      "save": "Portville.crp",
+      "cityDir": "cities/portville",
+      "expect": {
+        "cityName": null,
+        "populationMin": null,
+        "populationMax": null,
+        "note": "fill at first live run; cities/portville/city.md header reads name: Portville, id: unknown"
+      },
+      "settleDays": 7,
+      "samples": 5,
+      "sampleIntervalSec": 30,
+      "metrics": ["transitBoardingsLegs", "trafficFlowPercent", "population", "cashBalance", "problemsTotal", "despawnIndicator"]
+    }
+  ]
+}

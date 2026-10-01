@@ -1,0 +1,169 @@
+{
+  "name": "bus-metro-interchange-block",
+  "version": 1,
+  "description": "Road-only block for a bus/metro interchange: a Medium Road spine frontage plus a Basic Road access loop around a plot sized for a Metro Station or Bus Depot and its bus bays. Transit lines and the station/depot building are not part of this template.",
+  "geometryStatus": "UNVERIFIED IN GAME",
+  "anchor": "anchor = centre of the layout; +z = main axis at angleDeg 0; angleDeg rotates clockwise seen from above (standard CS1 angle convention used by place-building angleDegrees)",
+  "roles": {
+    "spine": {
+      "default": "Medium Road",
+      "allowed": [
+        "Medium Road",
+        "Large Road"
+      ]
+    },
+    "access": {
+      "default": "Basic Road",
+      "allowed": [
+        "Basic Road"
+      ]
+    }
+  },
+  "nodes": {
+    "Spine_W": {
+      "x": -200,
+      "z": -120,
+      "elevation": 0
+    },
+    "Spine_E": {
+      "x": 200,
+      "z": -120,
+      "elevation": 0
+    },
+    "Loop_NW": {
+      "x": -80,
+      "z": -120,
+      "elevation": 0
+    },
+    "Loop_NE": {
+      "x": 80,
+      "z": -120,
+      "elevation": 0
+    },
+    "Loop_SE": {
+      "x": 80,
+      "z": 60,
+      "elevation": 0
+    },
+    "Loop_SW": {
+      "x": -80,
+      "z": 60,
+      "elevation": 0
+    },
+    "Spine_W_Loop_NW_s0_i1": {
+      "x": -140.0,
+      "z": -120.0,
+      "elevation": 0.0
+    },
+    "Loop_NW_Loop_NE_s1_i1": {
+      "x": 0.0,
+      "z": -120.0,
+      "elevation": 0.0
+    },
+    "Loop_NE_Spine_E_s2_i1": {
+      "x": 140.0,
+      "z": -120.0,
+      "elevation": 0.0
+    },
+    "Loop_NE_Loop_SE_s3_i1": {
+      "x": 80.0,
+      "z": -30.0,
+      "elevation": 0.0
+    },
+    "Loop_SE_Loop_SW_s4_i1": {
+      "x": 0.0,
+      "z": 60.0,
+      "elevation": 0.0
+    },
+    "Loop_SW_Loop_NW_s5_i1": {
+      "x": -80.0,
+      "z": -30.0,
+      "elevation": 0.0
+    }
+  },
+  "segments": [
+    {
+      "from": "Spine_W",
+      "to": "Spine_W_Loop_NW_s0_i1",
+      "role": "spine",
+      "name": "spine approach west"
+    },
+    {
+      "from": "Spine_W_Loop_NW_s0_i1",
+      "to": "Loop_NW",
+      "role": "spine",
+      "name": "spine approach west"
+    },
+    {
+      "from": "Loop_NW",
+      "to": "Loop_NW_Loop_NE_s1_i1",
+      "role": "spine",
+      "name": "spine frontage (station entrance side)"
+    },
+    {
+      "from": "Loop_NW_Loop_NE_s1_i1",
+      "to": "Loop_NE",
+      "role": "spine",
+      "name": "spine frontage (station entrance side)"
+    },
+    {
+      "from": "Loop_NE",
+      "to": "Loop_NE_Spine_E_s2_i1",
+      "role": "spine",
+      "name": "spine approach east"
+    },
+    {
+      "from": "Loop_NE_Spine_E_s2_i1",
+      "to": "Spine_E",
+      "role": "spine",
+      "name": "spine approach east"
+    },
+    {
+      "from": "Loop_NE",
+      "to": "Loop_NE_Loop_SE_s3_i1",
+      "role": "access",
+      "name": "access loop east side"
+    },
+    {
+      "from": "Loop_NE_Loop_SE_s3_i1",
+      "to": "Loop_SE",
+      "role": "access",
+      "name": "access loop east side"
+    },
+    {
+      "from": "Loop_SE",
+      "to": "Loop_SE_Loop_SW_s4_i1",
+      "role": "access",
+      "name": "access loop south side (bus bays front here)"
+    },
+    {
+      "from": "Loop_SE_Loop_SW_s4_i1",
+      "to": "Loop_SW",
+      "role": "access",
+      "name": "access loop south side (bus bays front here)"
+    },
+    {
+      "from": "Loop_SW",
+      "to": "Loop_SW_Loop_NW_s5_i1",
+      "role": "access",
+      "name": "access loop west side"
+    },
+    {
+      "from": "Loop_SW_Loop_NW_s5_i1",
+      "to": "Loop_NW",
+      "role": "access",
+      "name": "access loop west side"
+    }
+  ],
+  "footprint": {
+    "minX": -220,
+    "maxX": 220,
+    "minZ": -140,
+    "maxZ": 80
+  },
+  "notes": [
+    "the plot inside the loop (x -80..80, z -120..60) is sized for a mid-size station/depot footprint; measure the actual prefab footprint before placing (facilities[].width/length per docs/api.md GET /state/facilities) and widen the loop if it doesn't fit.",
+    "after stamping, place the Metro Station or Bus Depot building against the spine frontage edge (Loop_NW-Loop_NE) and route bus stops along the south side of the access loop (Loop_SE-Loop_SW), per knowledge.md Public transit 'each direction needs a stop, both sides of the street'.",
+    "no elevation/grade concerns: every node is at elevation 0."
+  ]
+}
