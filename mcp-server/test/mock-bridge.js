@@ -140,6 +140,24 @@ const ROUTES = {
       { name: "Medium Road", displayName: "Four-Lane Road" },
     ],
   }),
+  "/state/terrain": (url) => {
+    const pointsParam = url.searchParams.get("points");
+    const dryFixture = { x: 100, z: 100, terrainHeight: 42, waterHeight: 42, hasWater: false, waterDepth: 0, shoreDistance: 18.4, shoreWaterHeight: 40.1 };
+    const wetFixture = { x: 500, z: -200, terrainHeight: 30, waterHeight: 35.5, hasWater: true, waterDepth: 5.5, shoreDistance: 0, shoreWaterHeight: 35.5 };
+    if (pointsParam) {
+      const requested = pointsParam.split(";").filter(Boolean);
+      const samples = requested.map((pair, i) => {
+        const [x, z] = pair.split(",").map(Number);
+        const base = i % 2 === 0 ? dryFixture : wetFixture;
+        return { ...base, x, z };
+      });
+      return { ok: true, count: samples.length, samples };
+    }
+    const x = Number(url.searchParams.get("x") ?? 0);
+    const z = Number(url.searchParams.get("z") ?? 0);
+    const sample = { ...dryFixture, x, z };
+    return { ok: true, count: 1, samples: [sample] };
+  },
   "/state/saves": () => ({
     ok: true,
     directory: "/Users/x/Library/Application Support/Colossal Order/Cities_Skylines/Saves",
@@ -153,10 +171,13 @@ const chatLog = [
 
 export function startMockBridge(port = 0) {
   const seenOps = new Map();
+  const requests = [];
 
   const server = createServer((req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
     const path = url.pathname;
+    const requestEntry = { method: req.method, url: req.url };
+    requests.push(requestEntry);
 
     if (path === "/capture") {
       if (url.searchParams.get("mode") === "Nonsense") {
@@ -185,6 +206,7 @@ export function startMockBridge(port = 0) {
         } catch {
           /* mirror the mod: a bad body just yields defaults */
         }
+        requestEntry.body = parsed;
 
         if (path === "/commands/build-grid") {
           if (parsed.opId && seenOps.has(parsed.opId)) {
@@ -268,12 +290,12 @@ export function startMockBridge(port = 0) {
     }
 
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify(handler()));
+    res.end(JSON.stringify(handler(url)));
   });
 
   return new Promise((resolve) => {
     server.listen(port, "127.0.0.1", () => {
-      resolve({ server, port: server.address().port });
+      resolve({ server, port: server.address().port, requests });
     });
   });
 }

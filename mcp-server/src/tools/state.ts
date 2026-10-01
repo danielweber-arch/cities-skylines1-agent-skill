@@ -14,6 +14,11 @@ import {
 } from "../filters.js";
 import { fail, text } from "./shared.js";
 
+const point = z.object({
+  x: z.number().describe("World X in metres."),
+  z: z.number().describe("World Z in metres."),
+});
+
 const detail = z
   .enum(["summary", "full"])
   .optional()
@@ -258,6 +263,61 @@ export function registerStateTools(server: McpServer, bridge: BridgeClient) {
       "Local .crp save files with timestamps and sizes. Poll this after cs1_save to confirm the " +
       "file actually landed — the save command returns before the write completes.",
   });
+
+  const terrainSampleSchema = z
+    .object({
+      x: z.number().optional().describe("World X in metres. Pair with z for a single point."),
+      z: z.number().optional().describe("World Z in metres. Pair with x for a single point."),
+      points: z
+        .array(point)
+        .min(1)
+        .max(64)
+        .optional()
+        .describe("Up to 64 points to sample in one call. Use instead of x/z."),
+    })
+    .superRefine((args, ctx) => {
+      if (args.points && args.points.length > 0) return;
+      if (args.x !== undefined && args.z === undefined) {
+        ctx.addIssue({ code: "custom", path: ["z"], message: "z is required when x is given." });
+      }
+      if (args.z !== undefined && args.x === undefined) {
+        ctx.addIssue({ code: "custom", path: ["x"], message: "x is required when z is given." });
+      }
+      if (args.x === undefined && args.z === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["points"],
+          message: "Provide x and z together, or points.",
+        });
+      }
+    });
+
+  server.registerTool(
+    "cs1_terrain_sample",
+    {
+      description:
+        "Sample terrain and water height at points BEFORE building. hasWater true means a ground " +
+        "road or building there is refused by the bridge. terrainHeight is the water-free ground " +
+        "height; waterHeight is the surface height (equals terrainHeight when dry); waterDepth is " +
+        "max(0, waterHeight - terrainHeight). shoreDistance/shoreWaterHeight come from the nearest " +
+        "shore within 100m, null if none. The water surface fluctuates by several metres within a " +
+        "minute at a point, so treat a sample as a snapshot, not a fixed elevation.",
+      inputSchema: terrainSampleSchema,
+    },
+    async (args) => {
+      try {
+        const points = args.points as Array<{ x: number; z: number }> | undefined;
+        const query =
+          points && points.length > 0
+            ? { points: points.map((p) => `${p.x},${p.z}`).join(";") }
+            : { x: args.x, z: args.z };
+        const payload = await bridge.get("/state/terrain", query);
+        return text(encode(payload, SUMMARY_CHAR_BUDGET));
+      } catch (error) {
+        return fail(error);
+      }
+    },
+  );
 
   registerRead(server, bridge, {
     name: "cs1_prefabs_roads",

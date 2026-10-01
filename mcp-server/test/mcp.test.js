@@ -22,7 +22,7 @@ const textOf = (result) =>
   result.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
 
 async function withServer(run, extraEnv = {}) {
-  const { server, port } = await startMockBridge();
+  const { server, port, requests } = await startMockBridge();
   const cursor = join(mkdtempSync(join(tmpdir(), "cs1-chat-")), "cursor.json");
   const transport = new StdioClientTransport({
     command: "npx",
@@ -39,7 +39,7 @@ async function withServer(run, extraEnv = {}) {
 
   try {
     await client.connect(transport);
-    await run(client);
+    await run(client, requests);
   } finally {
     await client.close().catch(() => {});
     server.close();
@@ -277,6 +277,120 @@ test("bridge errors arrive as readable text, not transport failures", async () =
     const result = await client.callTool({ name: "cs1_capture", arguments: { x: 0, z: 0, mode: "Nonsense" } });
     assert.equal(result.isError, true);
     assert.match(textOf(result), /Unknown info mode/);
+  });
+});
+
+test("cs1_terrain_sample with x/z hits /state/terrain and returns samples", async () => {
+  await withServer(async (client) => {
+    const parsed = JSON.parse(
+      textOf(await client.callTool({ name: "cs1_terrain_sample", arguments: { x: 100, z: 100 } })),
+    );
+
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.count, 1);
+    assert.equal(parsed.samples[0].x, 100);
+    assert.equal(parsed.samples[0].hasWater, false);
+  });
+});
+
+test("cs1_terrain_sample with points builds the points= query and rejects more than 64", async () => {
+  await withServer(async (client, requests) => {
+    const parsed = JSON.parse(
+      textOf(
+        await client.callTool({
+          name: "cs1_terrain_sample",
+          arguments: {
+            points: [
+              { x: 10, z: 20 },
+              { x: 500, z: -200 },
+            ],
+          },
+        }),
+      ),
+    );
+
+    assert.equal(parsed.count, 2);
+    assert.equal(parsed.samples[0].hasWater, false);
+    assert.equal(parsed.samples[1].hasWater, true, "the wet fixture point must report hasWater");
+    assert.ok(
+      requests.some((r) => decodeURIComponent(r.url).includes("points=10,20;500,-200")),
+      `expected a request carrying the exact points= coordinates, got: ${JSON.stringify(requests)}`,
+    );
+
+    const beforeCount = requests.length;
+    const tooMany = Array.from({ length: 65 }, (_, i) => ({ x: i, z: i }));
+    const result = await client
+      .callTool({ name: "cs1_terrain_sample", arguments: { points: tooMany } })
+      .catch((error) => ({ thrown: error }));
+    const message = result.thrown ? String(result.thrown) : textOf(result);
+    assert.match(message, /64|invalid|too_big|expected/i, `expected a validation failure, got: ${message}`);
+    assert.equal(requests.length, beforeCount, "a schema-rejected call must never reach the bridge");
+  });
+});
+
+test("cs1_terrain_sample rejects x without z before any request reaches the bridge", async () => {
+  await withServer(async (client, requests) => {
+    const beforeCount = requests.length;
+    const result = await client
+      .callTool({ name: "cs1_terrain_sample", arguments: { x: 100 } })
+      .catch((error) => ({ thrown: error }));
+    const message = result.thrown ? String(result.thrown) : textOf(result);
+    assert.match(message, /z|invalid|expected/i, `expected a validation failure, got: ${message}`);
+    assert.equal(requests.length, beforeCount, "a schema-rejected call must never reach the bridge");
+
+    const neither = await client
+      .callTool({ name: "cs1_terrain_sample", arguments: {} })
+      .catch((error) => ({ thrown: error }));
+    const neitherMessage = neither.thrown ? String(neither.thrown) : textOf(neither);
+    assert.match(neitherMessage, /points|invalid|expected/i, `expected a validation failure, got: ${neitherMessage}`);
+    assert.equal(requests.length, beforeCount, "a schema-rejected call must never reach the bridge");
+  });
+});
+
+test("allowWater is rejected by the schema on cs1_build_network and cs1_place_building", async () => {
+  await withServer(async (client, requests) => {
+    const networkResult = await client
+      .callTool({
+        name: "cs1_build_network",
+        arguments: {
+          roadPrefab: "Basic Road",
+          start: { x: 0, z: 0 },
+          end: { x: 80, z: 0 },
+          allowWater: true,
+        },
+      })
+      .catch((error) => ({ thrown: error }));
+
+    if (networkResult.thrown) {
+      assert.match(String(networkResult.thrown), /allowWater|unrecognized|invalid|expected/i);
+    } else {
+      // The MCP SDK may strip unknown keys instead of throwing; either way the bridge must not see it.
+      const echoed = JSON.parse(textOf(networkResult));
+      assert.equal(echoed.echo.allowWater, undefined, "allowWater must not reach the bridge body");
+    }
+
+    const buildingResult = await client
+      .callTool({
+        name: "cs1_place_building",
+        arguments: {
+          buildingPrefab: "Wind Turbine",
+          position: { x: 300, z: 200 },
+          allowWater: true,
+        },
+      })
+      .catch((error) => ({ thrown: error }));
+
+    if (buildingResult.thrown) {
+      assert.match(String(buildingResult.thrown), /allowWater|unrecognized|invalid|expected/i);
+    } else {
+      const echoed = JSON.parse(textOf(buildingResult));
+      assert.equal(echoed.echo.allowWater, undefined, "allowWater must not reach the bridge body");
+    }
+
+    assert.ok(
+      requests.every((r) => !r.url.includes("allowWater") && !(r.body && "allowWater" in r.body)),
+      `no request should ever carry allowWater, got: ${JSON.stringify(requests)}`,
+    );
   });
 });
 

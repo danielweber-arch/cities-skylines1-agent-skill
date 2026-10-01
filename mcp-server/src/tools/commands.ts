@@ -23,6 +23,13 @@ const dryRun = z
   .optional()
   .describe("Validate and return the plan (including blockCenters) without changing the city.");
 
+const WATER_GUARD_NOTE =
+  " Refused by the bridge with 'Cannot build on water' when a ground endpoint, centreline or " +
+  "footprint is over water. On a refusal, re-plan: move the point, or cross with a " +
+  "bridge/elevated or tunnel prefab and elevation on both points, or ask the player. Exempt: " +
+  "pipes, power lines, quays, canals, flood walls, ship and ferry paths, bridge and tunnel " +
+  "pieces, dams, and endpoints with |elevation| >= 1 m.";
+
 export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
   const run = async (path: string, body: unknown) => {
     try {
@@ -43,7 +50,8 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         "grid joins the network properly instead of overlapping it. Returns blockCenters — the " +
         "coordinates of each city block — which is what you pass to cs1_set_zone next, so you " +
         "never have to do the arithmetic yourself. Verify with cs1_state_road_anomalies " +
-        "afterwards; a correct build reports zero.",
+        "afterwards; a correct build reports zero." +
+        WATER_GUARD_NOTE,
       inputSchema: {
         roadPrefab: z.string().describe("Exact name from cs1_prefabs_roads, e.g. 'Basic Road'."),
         origin: point.describe("The lattice corner. Cells grow toward +x and +z from here."),
@@ -81,7 +89,8 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         "Build a grid, connect it to the existing road network, and zone every block from a mix — " +
         "one call instead of roughly eighty. The connection step runs before zoning, so a " +
         "neighborhood can never end up as a zoned orphan island; if it cannot reach a road the " +
-        "grid is rolled back. Returns a manifest of which block got which zone.",
+        "grid is rolled back. Returns a manifest of which block got which zone." +
+        WATER_GUARD_NOTE,
       inputSchema: {
         roadPrefab: z.string(),
         center: point.describe("Middle of the neighborhood. The lattice is centred on this."),
@@ -135,10 +144,14 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
     "cs1_connect",
     {
       description:
-        "Join a point to the nearest existing network node of a service. Use it after every " +
-        "service building placement — it eliminates the whole class of 'I built a water tower " +
-        "and it has no road access' failures. Reports alreadyConnected:true when the point was " +
-        "already on the network, which is a success, not a no-op to retry.",
+        "Join a point to the nearest existing network node of a service. Use it for utilities " +
+        "after placing a plant (toService Water with roadPrefab 'Water Pipe', or Electricity " +
+        "with 'Power Line'; always set roadPrefab, the default is a Basic Road). Never toService " +
+        "Road from a building position: it starts the road at the building centre and runs it " +
+        "through the footprint. Road access comes from placing the building flush with a road. " +
+        "Reports alreadyConnected:true when the point was already on the network, which is a " +
+        "success, not a no-op to retry." +
+        WATER_GUARD_NOTE,
       inputSchema: {
         from: point.describe("The stranded point, typically a building position."),
         toService: z
@@ -167,7 +180,8 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         "is what makes the result a real intersection rather than a crossing. A surface pedestrian " +
         "path is refused (reason 'pathOnRoad', with suggestedStart/suggestedEnd) when it runs onto a " +
         "surface road: the game never joins a path to a road node or splits a road for it. End paths " +
-        "at the road edge; the path end links to the sidewalk by a lane connection within 16.5 m.",
+        "at the road edge; the path end links to the sidewalk by a lane connection within 16.5 m." +
+        WATER_GUARD_NOTE,
       inputSchema: {
         roadPrefab: z.string(),
         start: point,
@@ -208,7 +222,10 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
       description:
         "Place a building, including a unique or waterfront attraction. Locked prefabs are refused " +
         "by default; use ignoreUnlock only for an intentional test. Follow every placement with " +
-        "cs1_connect on the same position when it needs road access.",
+        "cs1_connect on the same position when it needs road access." +
+        WATER_GUARD_NOTE +
+        " Exempt: buildings with placement mode Shoreline, ShorelineOrGround, or OnWater " +
+        "(harbors, dams, offshore turbines), which keep the existing validate path.",
       inputSchema: {
         buildingPrefab: z.string().describe("Exact name from cs1_prefabs_buildings."),
         position: point,
@@ -240,7 +257,7 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "cs1_move_building",
     {
-      description: "Move an existing building by id to a new position.",
+      description: "Move an existing building by id to a new position." + WATER_GUARD_NOTE,
       inputSchema: {
         id: z.number().int().describe("Building id from cs1_state_facilities."),
         position: point,
