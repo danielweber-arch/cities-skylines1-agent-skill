@@ -9,13 +9,23 @@ Control a running Cities: Skylines 1 city on macOS through the local Skylines Ag
 
 ## Core Rules
 
+- Read `lessons.md` Proven Rules before building. They are binding and override this file where they differ.
+- Restate every player instruction in one line, with the tool calls it triggers, before the first mutation it causes. Standing orders go into `city.md` under `## Standing orders`.
 - Prefer API state over image recognition. Plan from state, verify with vision, never the reverse.
+- Never build in water. Sample with `cs1_terrain_sample` before choosing a bbox or endpoint; the bridge refuses ground pieces and footprints over water (see Water gate below) and the MCP tools cannot override it. A refusal means re-plan or ask the player.
+- Every mutation (build, connect, zone, repair-zone-clusters, bulldoze, transit, policy) is dry-run first, then run, then proven with a state read. Nothing is reported done before the API shows it.
 - Resume and repair existing saves by default. Start fresh only when explicitly requested.
 - Build with composite commands. One `cs1_build_grid` beats eighty `cs1_build_network` calls.
 - After any road work, road anomalies must be zero. That is the acceptance check, not a look at the screen.
-- Place service buildings flush with a road, front facing it. Do not `cs1_connect` from a building position (see TODOS).
-- Save after meaningful changes and verify the `.crp` file exists before saying it saved.
+- Place service buildings flush with a road (front edge 1-3 m off it), front facing it, with `validate:true`. `cs1_connect` is for utilities only (`toService:Water` or `Electricity`, always with `roadPrefab`); never `toService:Road` from a building position, it builds a road through the building.
+- One working save, overwritten after every verified change; confirm the `.crp` via `/state/saves` before saying it saved.
 - Commit repository changes after each coherent code/docs task when working inside this repository.
+- The Bash tool runs zsh: never loop over coordinates or JSON rows in zsh (no word splitting; bodies go out broken, results read as 0). Use Python or `bash -c`.
+
+The Claude Code slash-command skills that drive a run (`/cs1-city`, `/cs1-transit`) live in
+`skills/cs1-city/SKILL.md` and `skills/cs1-transit/SKILL.md`. The repo copies are canonical;
+`./scripts/install-skills.sh` copies them to `~/.claude/skills/`. This file is the API operating
+manual they build on.
 
 ## Local Setup
 
@@ -78,8 +88,10 @@ curl is the fallback for debugging the bridge itself.
 | Task | Tool |
 |---|---|
 | Is the bridge up, is a city loaded | `cs1_health` |
-| Where does the city stand | `cs1_state_summary`, `cs1_state_demand` |
-| What is broken | `cs1_state_problems`, `cs1_state_road_anomalies`, `cs1_state_zone_anomalies` |
+| Where does the city stand | `cs1_state_summary`, `cs1_state_demand`, `cs1_state_zones`, `cs1_state_economy` |
+| Is this point on water, how high is the ground | `cs1_terrain_sample` (up to 64 points per call) |
+| What is broken | `cs1_state_problems`, `cs1_state_road_anomalies`, `cs1_state_zone_anomalies`, `cs1_state_building_anomalies`, `cs1_state_external_connections` |
+| Talk with the player in the game | `cs1_chat_*` (see `docs/chat.md`) |
 | What exists | `cs1_state_networks`, `cs1_state_facilities`, `cs1_state_growables` |
 | Valid prefab names | `cs1_prefabs_roads`, `cs1_prefabs_buildings` |
 | Build a district | `cs1_build_grid`, `cs1_build_neighborhood` |
@@ -122,6 +134,26 @@ junctions are needed.
 
 ## Building
 
+### Water gate (runs before every build)
+
+1. Sample first. `cs1_terrain_sample` (`GET /state/terrain?points=x1,z1;x2,z2`) on the bbox
+   corners of a grid, both endpoints of a segment, or the footprint of a building. Any
+   `hasWater:true` point is out: move or shrink the plan. The water surface here swings several
+   metres within a minute, so `hasWater` is the signal, not a height compare; sample shore-side
+   work more than once.
+2. Dry run. Every build-network, build-grid, build-neighborhood, connect and place-building call
+   is `dryRun:true` first. The response carries `waterCheck`; `onWater` must be false.
+3. The bridge enforces it. Ground roads, train and metro track, pedestrian paths and building
+   footprints over water are refused with `ok:false` and `Cannot build on water: ...`. That
+   refusal is a plan error to fix in `city.md` (move the point, cross with an elevated or
+   tunnel piece, or ask the player). `allowWater:true` exists on the raw HTTP body for a
+   human-run script only; the MCP tools do not expose it.
+4. Legitimate over-water work is explicit: an elevated, bridge or tunnel prefab with
+   `elevation` on both points (under-river metro at -12 is proven); harbors, dams and offshore
+   turbines through `place-building` with `validate:true` (on by default for shoreline prefabs);
+   quays at an elevation above the measured water peaks. Pipes, power lines, quays, canals and
+   ship or ferry paths are exempt from the guard.
+
 ### Composite commands first
 
 A neighborhood is one call, not eighty. `cs1_build_grid` creates the whole lattice — nodes
@@ -147,9 +179,13 @@ curl -sS -X POST http://127.0.0.1:32123/commands/build-neighborhood \
        "commercialPlacement":"perimeter","opId":"hood-north-01"}'
 ```
 
-`cs1_connect` joins any point to the nearest network node of a service. Use it after every
-service building placement — it removes the whole class of "I built a water tower and it has
-no road access" failures.
+`cs1_connect` joins any point to the nearest network node of a service. Use it for utilities
+after placing a plant: `toService:Water` with `roadPrefab:"Water Pipe"` or `toService:Electricity`
+with `roadPrefab:"Power Line"`, always naming `roadPrefab` (the default is a Basic Road). A Water
+facility connects only through its own pipe node; probe with `dryRun:true maxDistance:45` from
+the placed position first. Never `toService:Road` from a building position: it starts the road
+at the building centre and runs it through the footprint. Road access comes from placing the
+building flush with a road.
 
 ```bash
 curl -sS -X POST http://127.0.0.1:32123/commands/connect \
@@ -239,7 +275,7 @@ Vision is for verification only. Never plan layout from an image; plan from stat
 
 Capture a review render:
 
-- after completing any phase in `city-plan.md`
+- after completing any phase in `city.md`
 - after any `build-neighborhood` or `build-grid` call
 - when `/state/problems` reports something the state APIs cannot localise
 - **never more than once per 10 commands**
@@ -267,30 +303,30 @@ Over a long build every model loses the thread: it starts a transit-oriented tow
 with a suburb because turn 140 has no memory of turn 12's intent. The fix is to keep the intent
 in a file. The plan is the source of truth; context is scratch space.
 
-**Phase A — plan.** No mutations. Read state, write `city-plan.md` from
-`templates/city-plan.md`, and stop for review. Two minutes here saves an hour of wrong
-construction.
+**Phase A, plan.** No mutations. Read state, write `city.md` (the structure is in
+`skills/cs1-city/SKILL.md` Step 3; `templates/city-plan.md` is the older template), and stop
+for review. Two minutes here saves an hour of wrong construction.
 
-**Phase B — execute.** One plan phase per session.
+**Phase B, execute.** One plan phase per session.
 
 Rules:
 
-- Before any mutation, read `progress.json` and only the current phase block from
-  `city-plan.md`. Do not load the whole plan every turn.
+- Before any mutation, read `progress.md` and only the current phase block from
+  `city.md`. Do not load the whole plan every turn.
 - Never build anything not described in the current phase.
 - If reality contradicts the plan — terrain blocks a district, funds run out, a bbox overlaps
   water — do not improvise. Stop, append to `## Amendments` explaining what changed and why,
   update the affected district or phase, then proceed.
 - A phase is complete only when its acceptance criteria pass as literal API assertions. "It
-  looks fine" is not completion. Record the passing values in `progress.json`.
-- Track every created node, segment, and building id in `progress.json` under the phase that
+  looks fine" is not completion. Record the passing values in `progress.md`.
+- Track every created node, segment, and building id in `progress.md` under the phase that
   made it. That is the undo log: a failed phase can be bulldozed precisely without touching
   anything else.
-- Save the game and commit `city-plan.md` + `progress.json` at every phase boundary. The git
+- Save the game and commit `city.md` + `progress.md` at every phase boundary. The git
   history of those two files is how you debug a run that went wrong four hours in.
 
 Test of whether the externalised state is sufficient: start a fresh session with no history and
-say "resume". It should read `progress.json`, identify the current phase, and continue.
+say "resume". It should read `progress.md`, identify the current phase, and continue.
 
 ## Known Gotchas
 
@@ -310,3 +346,9 @@ say "resume". It should read `progress.json`, identify the current phase, and co
   `/commands/repair-zone-clusters` using `preferGrowableZone=true`.
 - A composite command can hold the game thread for several seconds. That is expected; the HTTP
   timeout is generous and `opId` makes a retry safe.
+- `/state/networks` and `/state/facilities` cap at 5,000 rows (TODOS). A guard built on one
+  unfiltered call is blind to the rest; filter by `service` or bbox and page.
+- `Advanced Wind Turbine` is an offshore (on-water) prefab: a validated dry run on dry land
+  returns `WaterNotFound`, which is the game's rule, not a bridge bug. Use `Wind Turbine` on land.
+- Re-read the live network around the build box right before the first command, by prefab as
+  well as id. The operator plays at the same time and the survey is not current.
