@@ -45,6 +45,12 @@ namespace SkylinesAgentBridge
                 return CommandResult.Fail(error);
             }
 
+            error = CheckLatticeWater(request);
+            if (error != null)
+            {
+                return CommandResult.Fail(error);
+            }
+
             if (request.DryRun)
             {
                 return CommandResult.FromJson(DescribeGridPlan(request));
@@ -110,9 +116,24 @@ namespace SkylinesAgentBridge
             Vector3 targetPosition = NetManager.instance.m_nodes.m_buffer[target].m_position;
             float distance = Vector3.Distance(new Vector3(from.x, 0f, from.z), new Vector3(targetPosition.x, 0f, targetPosition.z));
 
+            // The from point is a new ground node; the target node already exists, so only its
+            // elevation matters (an elevated or tunnel target exempts the centreline check).
+            bool allowWater = JsonUtil.GetBool(body, "allowWater", false);
+            float targetElevation = TargetElevation(target);
+            string waterCheck;
+            try
+            {
+                WaterGuard.AssertNetworkPointsClear(prefab, from, 0f, targetPosition, targetElevation, allowWater, snapDistance, out waterCheck);
+            }
+            catch (BridgeException ex)
+            {
+                return CommandResult.Fail(ex.Message);
+            }
+
             if (dryRun)
             {
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true" +
+                    ",\"waterCheck\":" + waterCheck +
                     ",\"targetNodeId\":" + target +
                     ",\"targetPosition\":" + PointJson(targetPosition) +
                     ",\"distance\":" + JsonUtil.Number(distance) + "}");
@@ -133,6 +154,7 @@ namespace SkylinesAgentBridge
                 if (fromNode == target)
                 {
                     string already = "{\"ok\":true,\"dryRun\":false,\"alreadyConnected\":true" +
+                        ",\"waterCheck\":" + waterCheck +
                         ",\"nodeId\":" + fromNode +
                         ",\"segmentIds\":[]" +
                         ",\"distance\":" + JsonUtil.Number(distance) + "}";
@@ -147,6 +169,7 @@ namespace SkylinesAgentBridge
                 }
 
                 string json = "{\"ok\":true,\"dryRun\":false,\"alreadyConnected\":" + JsonUtil.Bool(segment == 0) +
+                    ",\"waterCheck\":" + waterCheck +
                     ",\"nodeId\":" + fromNode +
                     ",\"targetNodeId\":" + target +
                     ",\"targetPosition\":" + PointJson(targetPosition) +
@@ -199,6 +222,16 @@ namespace SkylinesAgentBridge
             Vector3 connectTo = ReadPoint(body, "connectTo");
             float connectMaxDistance = JsonUtil.GetNumber(body, "connectMaxDistance", 400f);
 
+            error = CheckLatticeWater(request);
+            if (error == null)
+            {
+                error = CheckNeighborhoodLinkWater(request, hasConnectTo, connectTo, connectMaxDistance);
+            }
+            if (error != null)
+            {
+                return CommandResult.Fail(error);
+            }
+
             if (request.DryRun)
             {
                 return CommandResult.FromJson(DescribeGridPlan(request));
@@ -240,6 +273,113 @@ namespace SkylinesAgentBridge
 
             OpCache.Store(opId, json);
             return CommandResult.FromJson(json);
+        }
+
+        // -------------------------------------------------------------- water guard
+
+        /// <summary>
+        /// Checks every planned lattice node and segment for water before anything is built, so
+        /// a grid that touches water fails as a whole with nothing created (dry runs report it
+        /// the same way). Returns the refusal message, or null with request.WaterCheckJson set.
+        /// All lattice nodes are ground nodes (elevation 0).
+        /// </summary>
+        private static string CheckLatticeWater(GridRequest request)
+        {
+            string reason = WaterGuard.SkipReason(request.Prefab, request.AllowWater);
+            if (reason != null)
+            {
+                request.WaterCheckJson = WaterGuard.NotCheckedJson(reason);
+                return null;
+            }
+
+            int nodes = 0;
+            int segments = 0;
+            try
+            {
+                for (int i = 0; i <= request.Cols; i++)
+                {
+                    for (int j = 0; j <= request.Rows; j++)
+                    {
+                        Vector3 point = request.LatticePoint(i, j);
+                        WaterGuard.AssertPointClear(request.Prefab, point, request.SnapDistance);
+                        nodes++;
+                        if (i < request.Cols)
+                        {
+                            WaterGuard.AssertSegmentClear(request.Prefab, point, 0f, request.LatticePoint(i + 1, j), 0f);
+                            segments++;
+                        }
+                        if (j < request.Rows)
+                        {
+                            WaterGuard.AssertSegmentClear(request.Prefab, point, 0f, request.LatticePoint(i, j + 1), 0f);
+                            segments++;
+                        }
+                    }
+                }
+            }
+            catch (BridgeException ex)
+            {
+                return ex.Message + " Nothing was built.";
+            }
+
+            request.WaterCheckJson = "{\"checked\":true,\"onWater\":false,\"nodesChecked\":" + nodes +
+                ",\"segmentsChecked\":" + segments + "}";
+            return null;
+        }
+
+        /// <summary>
+        /// Checks the link from the planned lattice to the existing road before anything is built,
+        /// so a neighborhood dry run reports a wet link and a real run never builds a lattice it
+        /// must roll back. Mirrors ConnectLattice's choice of nodes on the planned points.
+        /// Returns the refusal message, or null.
+        /// </summary>
+        private static string CheckNeighborhoodLinkWater(GridRequest request, bool hasConnectTo, Vector3 connectTo, float maxDistance)
+        {
+            if (!hasConnectTo || WaterGuard.SkipReason(request.Prefab, request.AllowWater) != null)
+            {
+                return null;
+            }
+            ushort target = NodeHelper.FindNearestNodeOfService(connectTo, maxDistance, ItemClass.Service.Road);
+            if (target == 0)
+            {
+                return null; // ConnectLattice reports the missing road itself.
+            }
+            Vector3 targetPosition = NetManager.instance.m_nodes.m_buffer[target].m_position;
+            Vector3 nearest = request.LatticePoint(0, 0);
+            float bestSq = float.MaxValue;
+            for (int i = 0; i <= request.Cols; i++)
+            {
+                for (int j = 0; j <= request.Rows; j++)
+                {
+                    Vector3 point = request.LatticePoint(i, j);
+                    Vector3 delta = point - targetPosition;
+                    delta.y = 0f;
+                    if (delta.sqrMagnitude < bestSq)
+                    {
+                        bestSq = delta.sqrMagnitude;
+                        nearest = point;
+                    }
+                }
+            }
+            try
+            {
+                WaterGuard.AssertSegmentClear(request.Prefab, nearest, 0f, targetPosition, TargetElevation(target));
+            }
+            catch (BridgeException ex)
+            {
+                return ex.Message + " (the link from the lattice to the existing road) Nothing was built.";
+            }
+            return null;
+        }
+
+        /// <summary>Signed elevation of an existing node: 0 on the ground, negative underground.</summary>
+        private static float TargetElevation(ushort node)
+        {
+            NetNode data = NetManager.instance.m_nodes.m_buffer[node];
+            if (data.m_elevation == 0)
+            {
+                return 0f;
+            }
+            return (data.m_flags & NetNode.Flags.Underground) != NetNode.Flags.None ? -(float)data.m_elevation : (float)data.m_elevation;
         }
 
         // ---------------------------------------------------------------- the lattice
@@ -356,6 +496,13 @@ namespace SkylinesAgentBridge
             if (nearest == 0)
             {
                 throw new BridgeException("The grid produced no node that could be connected.");
+            }
+
+            // The lattice itself was checked before anything was built; the link to the existing
+            // road is checked here (BridgeException rolls the whole grid back in the caller).
+            if (WaterGuard.SkipReason(request.Prefab, request.AllowWater) == null)
+            {
+                WaterGuard.AssertSegmentClear(request.Prefab, NetManager.instance.m_nodes.m_buffer[nearest].m_position, TargetElevation(nearest), targetPosition, TargetElevation(target));
             }
 
             ushort segment = NodeHelper.CreateSegment(nearest, target, request.Prefab, request.Name);
@@ -600,6 +747,10 @@ namespace SkylinesAgentBridge
             public float RotationDegrees;
             public float SnapDistance;
             public bool DryRun;
+            public bool AllowWater;
+
+            /// <summary>Set by CheckLatticeWater; reported as "waterCheck".</summary>
+            public string WaterCheckJson = "null";
 
             private Quaternion rotation;
 
@@ -631,6 +782,7 @@ namespace SkylinesAgentBridge
                 r.RotationDegrees = JsonUtil.GetNumber(body, "rotationDegrees", 0f);
                 r.SnapDistance = NodeHelper.ClampSnapDistance(JsonUtil.GetNumber(body, "snapDistance", NodeHelper.DefaultSnapDistance));
                 r.DryRun = JsonUtil.GetBool(body, "dryRun", false);
+                r.AllowWater = JsonUtil.GetBool(body, "allowWater", false);
                 r.Origin = ReadPoint(body, "origin");
 
                 string error = r.Validate(MaxCells);
@@ -660,6 +812,7 @@ namespace SkylinesAgentBridge
                 r.RotationDegrees = JsonUtil.GetNumber(body, "rotationDegrees", 0f);
                 r.SnapDistance = NodeHelper.ClampSnapDistance(JsonUtil.GetNumber(body, "snapDistance", NodeHelper.DefaultSnapDistance));
                 r.DryRun = JsonUtil.GetBool(body, "dryRun", false);
+                r.AllowWater = JsonUtil.GetBool(body, "allowWater", false);
 
                 string error = r.Validate(MaxNeighborhoodCells);
                 if (error != null)
@@ -723,6 +876,7 @@ namespace SkylinesAgentBridge
             json.Append(",\"plannedSegments\":").Append(request.Cols * (request.Rows + 1) + request.Rows * (request.Cols + 1));
             json.Append(",\"bbox\":").Append(BboxJson(request));
             json.Append(",\"blockCenters\":").Append(BlockCentersJson(request));
+            json.Append(",\"waterCheck\":").Append(request.WaterCheckJson);
             json.Append("}");
             return json.ToString();
         }
@@ -742,6 +896,7 @@ namespace SkylinesAgentBridge
             json.Append(",\"skippedSegments\":").Append(grid.SkippedSegments);
             json.Append(",\"bbox\":").Append(BboxJson(request));
             json.Append(",\"blockCenters\":").Append(BlockCentersJson(request));
+            json.Append(",\"waterCheck\":").Append(request.WaterCheckJson);
             if (extra != null)
             {
                 json.Append(extra);

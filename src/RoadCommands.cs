@@ -39,6 +39,20 @@ namespace SkylinesAgentBridge
             start.y = terrain.SampleRawHeightSmoothWithWater(start, false, 0f) + startElevation;
             end.y = terrain.SampleRawHeightSmoothWithWater(end, false, 0f) + endElevation;
 
+            // Never build a ground road/track/path on water: the heights above come from the water
+            // surface, so without this check the node is created floating on a river or lake.
+            bool allowWater = JsonUtil.GetBool(body, "allowWater", false);
+            string waterCheck;
+            try
+            {
+                float guardSnap = NodeHelper.ClampSnapDistance(JsonUtil.GetNumber(body, "snapDistance", NodeHelper.DefaultSnapDistance));
+                WaterGuard.AssertNetworkPointsClear(info, start, startElevation, end, endElevation, allowWater, guardSnap, out waterCheck);
+            }
+            catch (BridgeException ex)
+            {
+                return CommandResult.Fail(ex.Message);
+            }
+
             // A surface pedestrian path never joins a road node or splits a road segment in the game:
             // the net tool's raycast cannot return road nodes/segments for a path (see
             // NodeHelper.CanJoinPathToRoadNode) and NetTool.CreateNode refuses a path drawn onto a road
@@ -62,7 +76,8 @@ namespace SkylinesAgentBridge
             if (dryRun)
             {
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Build-road validation passed.\",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"" +
-                    ",\"startY\":" + JsonUtil.Number(start.y) + ",\"endY\":" + JsonUtil.Number(end.y) + "}");
+                    ",\"startY\":" + JsonUtil.Number(start.y) + ",\"endY\":" + JsonUtil.Number(end.y) +
+                    ",\"waterCheck\":" + waterCheck + "}");
             }
 
             // Node reuse now goes through NodeHelper, which snaps at 8m instead of the old 2m
@@ -116,6 +131,7 @@ namespace SkylinesAgentBridge
                         ",\"startNodeId\":" + startNode +
                         ",\"endNodeId\":" + endNode +
                         ",\"alreadyConnected\":true" +
+                        ",\"waterCheck\":" + waterCheck +
                         ",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"}");
                 }
 
@@ -126,6 +142,7 @@ namespace SkylinesAgentBridge
                     ",\"endNodeId\":" + endNode +
                     ",\"alreadyConnected\":false" +
                     ",\"createdNodeIds\":[" + string.Join(",", ToStrings(createdNodes)) + "]" +
+                    ",\"waterCheck\":" + waterCheck +
                     ",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"}";
 
                 Debug.Log("[SkylinesAgentBridge] Built road segment " + segment + " with prefab " + prefabName);

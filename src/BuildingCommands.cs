@@ -68,9 +68,20 @@ namespace SkylinesAgentBridge
             TerrainManager terrain = TerrainManager.instance;
             position.y = terrain.SampleRawHeightSmoothWithWater(position, false, 0f);
 
+            // The unvalidated path places the building at water-surface height with no check, so a
+            // ground building would float on a river. Shoreline/OnWater placements are exempt.
+            bool allowWater = JsonUtil.GetBool(body, "allowWater", false);
+            bool onWater;
+            string waterCheck = WaterGuard.BuildingFootprintWaterCheck(info, position, angleDegrees * Mathf.Deg2Rad, allowWater, out onWater);
+            if (onWater)
+            {
+                return OnWaterFailure(info, position, waterCheck);
+            }
+
             if (dryRun)
             {
-                return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Place-building validation passed.\",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\",\"unlockIgnored\":" + JsonUtil.Bool(ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone)) + "}");
+                return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Place-building validation passed.\",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\",\"unlockIgnored\":" + JsonUtil.Bool(ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone)) +
+                    ",\"waterCheck\":" + waterCheck + "}");
             }
 
             SimulationManager simulation = Singleton<SimulationManager>.instance;
@@ -101,7 +112,8 @@ namespace SkylinesAgentBridge
                 ",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"" +
                 ",\"service\":\"" + JsonUtil.Escape(info.m_class.m_service.ToString()) + "\"" +
                 ",\"subService\":\"" + JsonUtil.Escape(info.m_class.m_subService.ToString()) + "\"" +
-                ",\"unlockIgnored\":" + JsonUtil.Bool(ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone)) + "}";
+                ",\"unlockIgnored\":" + JsonUtil.Bool(ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone)) +
+                ",\"waterCheck\":" + waterCheck + "}";
 
             Debug.Log("[SkylinesAgentBridge] Placed building " + buildingId + " with prefab " + prefabName);
             return CommandResult.FromJson(json);
@@ -140,10 +152,19 @@ namespace SkylinesAgentBridge
             float angleDegrees = JsonUtil.GetNumber(body, "angleDegrees", oldBuilding.m_angle * Mathf.Rad2Deg);
             float angle = angleDegrees * Mathf.Deg2Rad;
 
+            bool allowWater = JsonUtil.GetBool(body, "allowWater", false);
+            bool onWater;
+            string waterCheck = WaterGuard.BuildingFootprintWaterCheck(info, position, angle, allowWater, out onWater);
+            if (onWater)
+            {
+                return OnWaterFailure(info, position, waterCheck);
+            }
+
             if (dryRun)
             {
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Move-building validation passed.\",\"id\":" + id +
-                    ",\"buildingPrefab\":\"" + JsonUtil.Escape(info.name) + "\"}");
+                    ",\"buildingPrefab\":\"" + JsonUtil.Escape(info.name) + "\"" +
+                    ",\"waterCheck\":" + waterCheck + "}");
             }
 
             SimulationManager simulation = Singleton<SimulationManager>.instance;
@@ -172,7 +193,8 @@ namespace SkylinesAgentBridge
                 ",\"buildingPrefab\":\"" + JsonUtil.Escape(info.name) + "\"" +
                 ",\"position\":{\"x\":" + JsonUtil.Number(position.x) +
                 ",\"y\":" + JsonUtil.Number(position.y) +
-                ",\"z\":" + JsonUtil.Number(position.z) + "}}";
+                ",\"z\":" + JsonUtil.Number(position.z) + "}" +
+                ",\"waterCheck\":" + waterCheck + "}";
 
             Debug.Log("[SkylinesAgentBridge] Moved building " + id + " to " + newBuildingId + " with prefab " + info.name);
             return CommandResult.FromJson(json);
@@ -314,6 +336,17 @@ namespace SkylinesAgentBridge
             public string Branch;
             public List<int> CollidingSegments = new List<int>();
             public List<int> CollidingBuildings = new List<int>();
+        }
+
+        /// <summary>The refusal for a ground building whose footprint samples report water.</summary>
+        private static CommandResult OnWaterFailure(BuildingInfo info, Vector3 position, string waterCheck)
+        {
+            string message = WaterGuard.BuildingOnWaterMessage(info, position);
+            CommandResult result = CommandResult.Fail(message);
+            result.Json = "{\"ok\":false,\"error\":\"" + JsonUtil.Escape(message) + "\"" +
+                ",\"toolErrors\":[\"CannotBuildOnWater\"]" +
+                ",\"waterCheck\":" + waterCheck + "}";
+            return result;
         }
 
         private static bool NeedsPlacementCheck(BuildingInfo info)

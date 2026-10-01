@@ -78,6 +78,55 @@ developed blocks.
 curl -sS "http://127.0.0.1:32123/state/growables?limit=500"
 ```
 
+## GET /state/terrain
+
+Samples terrain and water height at one or more points. Use this before building
+to check whether a planned road, track, path, or building footprint is over
+water, since the build endpoints below refuse that automatically.
+
+Give either a single point or a batch, up to 64 points:
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/terrain?x=500&z=-200"
+curl -sS "http://127.0.0.1:32123/state/terrain?points=0,0;500,-200;1000,400"
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "count": 2,
+  "samples": [
+    { "x": 0, "z": 0, "terrainHeight": 42, "waterHeight": 42, "hasWater": false, "waterDepth": 0, "shoreDistance": 18.4, "shoreWaterHeight": 40.1 },
+    { "x": 500, "z": -200, "terrainHeight": 30, "waterHeight": 35.5, "hasWater": true, "waterDepth": 5.5, "shoreDistance": 0, "shoreWaterHeight": 35.5 }
+  ]
+}
+```
+
+`terrainHeight` is the water-free ground height; `waterHeight` is the surface
+height and equals `terrainHeight` when dry. `waterDepth` is
+`max(0, waterHeight - terrainHeight)`. `shoreDistance` and `shoreWaterHeight`
+come from the nearest shore within 100 m, or `null` if none is that close.
+400 on bad input (neither `x`/`z` nor `points`, or more than 64 points); 409
+when no city is loaded, like every other `/state` route.
+
+**The water surface is not stable.** It fluctuates by several metres within a
+minute at a single point, so a sample is a snapshot, not a fixed elevation.
+The water guard below uses the game's own `hasWater` flag rather than a height
+comparison, for exactly this reason.
+
+A ground endpoint is one with `|elevation| >= 1 m` treated as elevated; below
+1 m counts as ground, because `FindOrCreateNode` rounds any non-zero elevation
+up to 1 m. Besides the two endpoints, the guard samples along the centreline
+every 8 m and checks the existing node a ground endpoint would snap to, not
+just the raw requested point.
+
+`allowWater` is accepted on raw HTTP request bodies for a human-run script
+only; it is not exposed through any MCP tool (see Water guard below). A
+refusal is HTTP 500 with `ok:false` and the error string, and carries no
+`waterCheck` field.
+
 ## GET /prefabs/roads
 
 Returns loaded `NetInfo` prefabs that look like roads.
@@ -485,6 +534,51 @@ curl -sS -X POST http://127.0.0.1:32123/commands/connect \
 `alreadyConnected:true` means the point was already on the network. That is a success, not a
 condition to retry.
 
+### Water guard
+
+`build-network`, `build-grid`, `build-neighborhood`, and `connect` (and `batch`, which forwards
+to `build-road`/`set-zone`) accept an optional body flag `allowWater` (boolean, default `false`)
+**on the raw HTTP body only**, for a human-run script against the bridge directly. No MCP tool
+exposes `allowWater`; an LLM agent driving the city through `cs1_*` tools cannot opt out of this
+guard. Without it, the bridge refuses to create a ground road, train track, metro track, or
+pedestrian path whose endpoint or centreline is over water. A ground endpoint is one with
+`|elevation| >= 1 m` treated as elevated; below 1 m counts as ground, because `FindOrCreateNode`
+rounds any non-zero elevation up to 1 m. The error starts with `Cannot build on water:` and tells
+you to either build elevated (an elevated or bridge prefab plus `elevation` on both points) or
+pass `allowWater:true` on the raw body for a deliberate over-water build. `dryRun` runs the same
+check, so a dry run also reports the refusal. Besides the two endpoints, the guard samples along
+the centreline every 8 m and checks the existing node a ground endpoint would snap to.
+
+Exempt automatically, regardless of `allowWater`: `RoadBridgeAI`/`TrainTrackBridgeAI`/
+`MetroTrackBridgeAI` bridge pieces, `DamAI`, any `NetAI` with `BuildOnWater()` or
+`IsUnderground()` true (ship/ferry paths, tunnels), and every `NetAI` that is not
+`RoadBaseAI`/`TrainTrackBaseAI`/`MetroTrackBaseAI`/`PedestrianPathAI` (pipes, power lines, quays,
+canals, flood walls, pedestrian bridges).
+
+Check before you build with `GET /state/terrain` (above): any sampled point with `hasWater:true`
+is out of bounds for a ground build.
+
+A refusal is HTTP 500 with `ok:false` and the error string described above, and carries no
+`waterCheck` field. On success, responses from the network builders carry a `waterCheck` object:
+
+```json
+{ "checked": true, "onWater": false, "points": [{ "x": 0, "z": 0, "terrainHeight": 42, "waterHeight": 42 }] }
+```
+
+for `build-network`/`connect`, or
+
+```json
+{ "checked": true, "onWater": false, "nodesChecked": 25, "segmentsChecked": 40 }
+```
+
+for `build-grid`/`build-neighborhood`, or `{ "checked": false, "reason": "..." }` when the prefab
+is exempt or `allowWater` was passed.
+
+`batch` runs its commands sequentially, not atomically: `src/BatchCommands.cs` defaults
+`stopOnError` to `true` (`bool stopOnError = JsonUtil.GetBool(body, "stopOnError", true);`), so a
+water-guard refusal stops the batch there, but every earlier item that already succeeded stays
+built.
+
 ## GET /capture
 
 Renders an orthographic top-down view into an off-screen texture and returns `image/png`.
@@ -600,9 +694,11 @@ caller can make that decision explicitly.
 
 Without validation, `place-building` creates the building exactly where it is told
 through `BuildingManager.CreateBuilding`, and a dry run only checks that the prefab
-exists. That skips everything the in-game building tool does: no shoreline snap,
-no harbor height rule, no dock-to-ship-lane check, no collision test. A harbor
-placed that way can sit on dry land with a dock that never reaches a ship lane.
+exists and passes the water guard below. That still skips everything else the
+in-game building tool does: no shoreline snap, no harbor height rule, no
+dock-to-ship-lane check, no collision test. A harbor placed that way can sit on
+dry land with a dock that never reaches a ship lane, unless `"validate": true` is
+also set.
 
 `"validate": true` runs the same checks as the game's `BuildingTool.SimulationStep`
 on the **simulation thread** (`SimulationManager.AddAction`), then places the
@@ -668,6 +764,23 @@ positions (`CheckSubBuildingPosition`), and the
 `CheckBuildPosition` can show or hide the game's tutorial placement hints, as
 hovering the tool does. `GET /prefabs/buildings` lists each prefab's
 `placementMode` and `ai` so you can tell which prefabs validate by default.
+
+### Water guard
+
+`place-building` and `move-building` accept the same `allowWater` (boolean, default `false`) body
+flag as the network builders, **on the raw HTTP body only**. No MCP tool exposes it, so an LLM
+agent cannot opt out. Without it, the bridge refuses to place or move a building whose footprint
+touches water, with an error starting `Cannot build on water:` that tells you to pass
+`allowWater:true` on the raw body for a deliberate over-water build. `dryRun` runs the same check.
+A refusal is HTTP 500 with `ok:false` and the error string, and carries no `waterCheck` field.
+
+The footprint is sampled on a grid at most 8 m apart over the whole rotated footprint: edges and
+interior, not just the four corners.
+
+Exempt automatically: buildings with placement mode `Shoreline`, `ShorelineOrGround`, or
+`OnWater` (harbors, dams, offshore turbines), which keep the existing `validate` path described
+above instead of the flat water guard. For every other prefab, check footprint points first with
+`GET /state/terrain`.
 
 ## POST /commands/move-building
 

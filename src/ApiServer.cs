@@ -296,6 +296,18 @@ namespace SkylinesAgentBridge
                 return RunOnGameThread(request, AreaCommands.BuildAreasJson);
             }
 
+            if (request.Method == "GET" && request.Path == "/state/terrain")
+            {
+                List<Vector2> terrainPoints;
+                string terrainError = TerrainState.ParsePoints(request.GetQueryString("points", ""),
+                    request.GetQueryFloat("x", float.NaN), request.GetQueryFloat("z", float.NaN), out terrainPoints);
+                if (terrainError != null)
+                {
+                    return HttpResponse.Json(400, "{\"ok\":false,\"error\":\"" + JsonUtil.Escape(terrainError) + "\"}");
+                }
+                return RunOnGameThread(request, delegate { return TerrainState.BuildTerrainJson(terrainPoints); });
+            }
+
             if (request.Method == "GET" && request.Path == "/state/saves")
             {
                 return RunOnGameThread(request, SaveCommands.ListSaves);
@@ -654,6 +666,7 @@ namespace SkylinesAgentBridge
                 if (request.Path == "/state/zone-anomalies") return "Inspect zoning anomalies";
                 if (request.Path == "/state/saves") return "List saves";
                 if (request.Path == "/state/areas") return "Read map tiles";
+                if (request.Path == "/state/terrain") return "Read terrain and water heights";
                 if (request.Path == "/prefabs/roads") return "List road prefabs";
                 if (request.Path == "/prefabs/networks") return "List network prefabs";
                 if (request.Path == "/prefabs/buildings") return "List building prefabs";
