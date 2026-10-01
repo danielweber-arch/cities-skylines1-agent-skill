@@ -1,5 +1,10 @@
 # City: Portville
 
+id: unknown
+name: Portville
+map: unknown
+bindOnLoad: true
+
 Goal: 100,000+ population, no unaddressed problems
 Style: Transit-oriented core
 Layout: one Medium Road spine ("Station Avenue") from the north highway stubs east to a rail station on the mainline; densest zoning within 400 m of stations, RL outward; later a metro trunk under the river to the SW bank and a second mainline station in the south
@@ -12,8 +17,12 @@ Map: new map, highways + mainline only | Save file: Portville | Started: 2026-09
 ## Protected areas
 
 ### Central Park [player directive 2026-09-29]
-Preserve and expand it. Inside its boundary every zone cell stays `Unzoned`: no R, C, I or Office, from any command, stager, repair tool or the chat assistant. No roads through it, no demolition of its park buildings, metro only underneath, no polluter within 300 m. Full rules and the expansion steps: `portville-phase4-plan.md` §1.
+Preserve and expand it. Inside its boundary every zone cell stays `Unzoned`: no R, C, I or Office, from any command, stager, repair tool or the chat assistant. No roads through it, no demolition of its park buildings, metro only underneath, no polluter within 300 m. Full rules and the expansion steps: `plan-phase4.md` §1 (moved from `portville-phase4-plan.md`, 2026-10-01).
 - Boundary: NOT YET RECORDED. Phase 4 step CP0 records it here (polygon corners, edge segment ids, park building ids) before any other Phase 4 command.
+<!-- Machine-readable placeholder, per wave2-spec.md section 4 city.md syntax. Do NOT uncomment
+     with a fake number: CP0 must measure the real boundary first.
+- NO-BUILD Central Park: bbox <minX>,<minZ> <maxX>,<maxZ>
+-->
 
 ## Research summary
 - Reused from city-ashford.md: 80 m grid spacing (16 m road + 2 x 32 m zone depth); `Basic Road` ~₡40 per 8 m cell, `Medium Road` ~₡60 per cell [E]; start cash ₡70k in vanilla [E]; R:I:C early block ratio ~5:2:1; residential chunks <= 150 cells; industry >= 2 blocks from housing.

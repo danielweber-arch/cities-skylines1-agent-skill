@@ -1,5 +1,10 @@
 # City: Ashford Transit
 
+id: unknown
+name: Ashford Transit
+map: unknown
+bindOnLoad: true
+
 Goal: 5,000 population, no unaddressed problems
 Style: Transit-oriented core
 Layout: one arterial spine from the highway entry; commercial and the densest residential within one block of the spine; low-density residential outward
