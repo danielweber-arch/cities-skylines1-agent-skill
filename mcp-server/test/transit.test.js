@@ -98,6 +98,9 @@ function startTransitMock() {
         res.end(JSON.stringify(payload));
       };
 
+      if (url.pathname === "/health") {
+        return send(200, { ok: true, levelLoaded: true, city: { id: "tt12345", name: "TransitTestCity", gameDate: "2026-10-01", population: 4000 } });
+      }
       if (url.pathname === "/state/transit") return send(200, transitPayload());
       if (url.pathname === "/state/traffic") return send(200, trafficPayload(Number(url.searchParams.get("limit") ?? 50)));
       if (url.pathname === "/state/policies") {

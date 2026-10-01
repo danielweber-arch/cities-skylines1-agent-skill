@@ -152,7 +152,9 @@ test("a wrong zone name is caught by the schema", async () => {
 
 test("build-network passes allowRoadOverlap through and types it", async () => {
   await withServer(async (client) => {
-    const base = { roadPrefab: "Pedestrian Pavement", start: { x: 1473.5, z: 865.69 }, end: { x: 1473.5, z: 829.69 } };
+    // Kept under x=600: the mock's deterministic water rule (x > 600) would otherwise trip the
+    // new inline H-WATER check, which is unrelated to what this test is verifying.
+    const base = { roadPrefab: "Pedestrian Pavement", start: { x: 273.5, z: 865.69 }, end: { x: 273.5, z: 829.69 } };
     const echoed = JSON.parse(
       textOf(await client.callTool({ name: "cs1_build_network", arguments: { ...base, allowRoadOverlap: true } })),
     );
@@ -245,9 +247,11 @@ test("a reloaded city does not hide new chat behind the old cursor", async () =>
 
 test("retrying with the same opId does not build twice", async () => {
   await withServer(async (client) => {
+    // z kept negative: the mock's dense /state/networks fixture only occupies z >= 4, so a
+    // negative-z grid cannot trip the new inline H-CROSSING check against that fixture.
     const args = {
       name: "cs1_build_grid",
-      arguments: { roadPrefab: "Basic Road", origin: { x: 0, z: 0 }, cols: 2, rows: 2, opId: "same-key" },
+      arguments: { roadPrefab: "Basic Road", origin: { x: 0, z: -500 }, cols: 2, rows: 2, opId: "same-key" },
     };
     const first = JSON.parse(textOf(await client.callTool(args)));
     const second = JSON.parse(textOf(await client.callTool(args)));
@@ -302,7 +306,7 @@ test("cs1_terrain_sample with points builds the points= query and rejects more t
           arguments: {
             points: [
               { x: 10, z: 20 },
-              { x: 500, z: -200 },
+              { x: 700, z: -200 },
             ],
           },
         }),
@@ -313,7 +317,7 @@ test("cs1_terrain_sample with points builds the points= query and rejects more t
     assert.equal(parsed.samples[0].hasWater, false);
     assert.equal(parsed.samples[1].hasWater, true, "the wet fixture point must report hasWater");
     assert.ok(
-      requests.some((r) => decodeURIComponent(r.url).includes("points=10,20;500,-200")),
+      requests.some((r) => decodeURIComponent(r.url).includes("points=10,20;700,-200")),
       `expected a request carrying the exact points= coordinates, got: ${JSON.stringify(requests)}`,
     );
 

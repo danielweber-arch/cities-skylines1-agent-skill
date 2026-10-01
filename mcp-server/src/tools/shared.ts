@@ -23,6 +23,11 @@ export function image(base64: string, mimeType: string, caption: string): ToolRe
  * bridge's own message — "Network prefab was not found: Basic Rd" is directly actionable,
  * an MCP transport error is not.
  */
+/** Like fail(), but for a message that is already the full user-facing text (no `Error:` prefix). */
+export function failMessage(message: string): ToolResult {
+  return { content: [{ type: "text", text: `ERROR: ${message}` }], isError: true };
+}
+
 export function fail(error: unknown): ToolResult {
   const message =
     error instanceof BridgeError
@@ -44,3 +49,5 @@ export const ZONE_NAMES = [
   "Office",
   "Unzoned",
 ] as const;
+
+export { capJson } from "../cap.js";

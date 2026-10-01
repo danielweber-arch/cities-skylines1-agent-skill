@@ -70,6 +70,11 @@ function segments(count) {
   return rows;
 }
 
+/** Mutable so tests can flip the loaded city / unload it without restarting the mock. */
+export const mockCity = {
+  current: { id: "abc12345", name: "Mockville", map: "Tropical", environment: "Tropical", gameDate: "2026-10-01", population: 4211, lastSaveName: "AgentAutoSave" },
+};
+
 const ROUTES = {
   "/health": () => ({
     ok: true,
@@ -79,6 +84,7 @@ const ROUTES = {
     capabilities: ["composite-commands", "capture", "node-snapping", "idempotent-ops"],
     defaultSpacing: 80,
     snapDistance: 8,
+    city: mockCity.current,
   }),
   "/state/summary": () => ({
     ok: true,
@@ -141,23 +147,108 @@ const ROUTES = {
     ],
   }),
   "/state/terrain": (url) => {
+    // Deterministic: x > 600 is water (matches /state/terrain/grid below), everything else dry.
+    const sampleAt = (x, z) =>
+      x > 600
+        ? { x, z, terrainHeight: 30, waterHeight: 35.5, hasWater: true, waterDepth: 5.5, shoreDistance: 0, shoreWaterHeight: 35.5 }
+        : { x, z, terrainHeight: 42, waterHeight: 42, hasWater: false, waterDepth: 0, shoreDistance: 18.4, shoreWaterHeight: 40.1 };
     const pointsParam = url.searchParams.get("points");
-    const dryFixture = { x: 100, z: 100, terrainHeight: 42, waterHeight: 42, hasWater: false, waterDepth: 0, shoreDistance: 18.4, shoreWaterHeight: 40.1 };
-    const wetFixture = { x: 500, z: -200, terrainHeight: 30, waterHeight: 35.5, hasWater: true, waterDepth: 5.5, shoreDistance: 0, shoreWaterHeight: 35.5 };
     if (pointsParam) {
       const requested = pointsParam.split(";").filter(Boolean);
-      const samples = requested.map((pair, i) => {
+      const samples = requested.map((pair) => {
         const [x, z] = pair.split(",").map(Number);
-        const base = i % 2 === 0 ? dryFixture : wetFixture;
-        return { ...base, x, z };
+        return sampleAt(x, z);
       });
       return { ok: true, count: samples.length, samples };
     }
     const x = Number(url.searchParams.get("x") ?? 0);
     const z = Number(url.searchParams.get("z") ?? 0);
-    const sample = { ...dryFixture, x, z };
-    return { ok: true, count: 1, samples: [sample] };
+    return { ok: true, count: 1, samples: [sampleAt(x, z)] };
   },
+  "/state/terrain/grid": (url) => {
+    const x = Number(url.searchParams.get("x") ?? 0);
+    const z = Number(url.searchParams.get("z") ?? 0);
+    const radius = Math.min(2048, Number(url.searchParams.get("radius") ?? 512));
+    const cell = Math.max(16, Number(url.searchParams.get("cell") ?? 64));
+    const n = Math.ceil((2 * radius) / cell);
+    if (n > 64) {
+      return { ok: false, error: "reduce radius or raise cell" };
+    }
+    const origin = { x: x - radius, z: z - radius };
+    const rows = [];
+    const counts = { dry: 0, steep: 0, water: 0, mixed: 0 };
+    for (let r = 0; r < n; r++) {
+      let rowStr = "";
+      for (let c = 0; c < n; c++) {
+        const cx = origin.x + (c + 0.5) * cell;
+        // Deterministic pattern: cx > 600 is water; a diagonal band (|cx-cz| < cell) is steep.
+        const cz = origin.z + (2 * radius - (r + 0.5) * cell);
+        let ch;
+        if (cx > 600) {
+          ch = "~";
+          counts.water++;
+        } else if (Math.abs(cx - cz) < cell) {
+          ch = "^";
+          counts.steep++;
+        } else {
+          ch = ".";
+          counts.dry++;
+        }
+        rowStr += ch;
+      }
+      rows.push(rowStr);
+    }
+    return {
+      ok: true,
+      center: { x, z },
+      radius,
+      cell,
+      cols: n,
+      rowCount: n,
+      origin,
+      rowOrder: "row 0 = north (max z), col 0 = west (min x)",
+      legend: { ".": "dry, grade <= 8%", "^": "dry, grade > 8%", "~": "water (all 5 samples)", "?": "mixed shore (some samples wet)" },
+      rows,
+      minHeight: 12.3,
+      maxHeight: 88,
+      counts,
+      flow: counts.water > 0 ? [{ id: 1, cells: counts.water, sampled: counts.water, bbox: { minX: Math.max(600, x - radius), maxX: x + radius, minZ: z - radius, maxZ: z + radius }, meanVelocity: { x: 0.2, z: -1.1 }, speed: 1.1, still: false }] : [],
+      flowNote: "instantaneous surface velocity, indicative only",
+      flowTruncated: 0,
+    };
+  },
+  "/state/segment-route-share": (url) => {
+    const segmentId = url.searchParams.get("segment");
+    return {
+      ok: true,
+      segment: { id: segmentId ? Number(segmentId) : 1234, prefab: "Highway", density: 87, start: { x: 0, z: 0 }, end: { x: 80, z: 0 } },
+      meaning: "vehicles whose CURRENT remaining route includes this segment at this instant; not throughput",
+      scanned: 9000,
+      totalActive: 16384,
+      truncated: true,
+      sample: true,
+      pathUnitsWalked: 150000,
+      budget: 150000,
+      matched: 312,
+      byClass: { passengerCar: 200, cargoTruck: 80, transit: 12, service: 10 },
+      outsideToOutside: 40,
+      fromOutside: 60,
+      toOutside: 55,
+      topPairs: Array.from({ length: 20 }, (_, i) => ({ from: `District${i}`, to: "outside", count: 30 - i })),
+      pairsTotal: 57,
+      pairsTruncated: 37,
+    };
+  },
+  "/state/growables": (url) => ({
+    ok: true,
+    total: 2,
+    returned: 2,
+    countsByService: { Residential: 2 },
+    growables: [
+      { id: 1, prefab: "Low Residential", service: "Residential", position: { x: 50, z: 50 } },
+      { id: 2, prefab: "Low Residential", service: "Residential", position: { x: 1700, z: 50 } },
+    ],
+  }),
   "/state/saves": () => ({
     ok: true,
     directory: "/Users/x/Library/Application Support/Colossal Order/Cities_Skylines/Saves",
@@ -259,6 +350,61 @@ export function startMockBridge(port = 0) {
         if (path === "/commands/set-zone") {
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify({ ok: true, dryRun: false, zone: parsed.zone, preserveOccupied: parsed.preserveOccupied ?? true, touchedBlocks: 4, skippedOccupiedBlocks: 0, changedCells: 64 }));
+          return;
+        }
+
+        // /commands/build-network and /commands/place-building fall through to the generic
+        // echo handler below (unchanged, so existing echo-shaped tests keep passing). The
+        // water guard itself is exercised at the inline TS layer, which must never let a
+        // water-crossing plan reach these routes at all (see the "blocked before bridge" test).
+
+        if (path === "/commands/batch") {
+          // Mirrors src/BatchCommands.cs: {dryRun, stopOnError, commands:[{type,...}]}, at most 32,
+          // results [{index, type, result}] with the build-road response inside `result`. A
+          // command whose name contains "FAIL-HERE" fails (non-dry) so partial builds are testable;
+          // ?failAt=N on the URL does the same by index.
+          const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
+          if (commands.length > 32) {
+            res.writeHead(500, { "content-type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Batch command limit is 32." }));
+            return;
+          }
+          const batchDry = parsed.dryRun === true;
+          const stopOnError = parsed.stopOnError !== false;
+          const failAt = Number(url.searchParams.get("failAt") ?? -1);
+          const results = [];
+          let allOk = true;
+          let executed = 0;
+          for (let i = 0; i < commands.length; i++) {
+            const cmd = commands[i];
+            const dry = cmd.dryRun === undefined ? batchDry : cmd.dryRun === true;
+            const type = cmd.type ?? "";
+            let result;
+            if (type !== "build-road" && type !== "set-zone") {
+              result = { ok: false, error: `Unsupported command type: ${type}` };
+            } else if (!dry && (i === failAt || String(cmd.name ?? "").includes("FAIL-HERE"))) {
+              result = { ok: false, error: `simulated failure at item ${i}` };
+            } else if (type === "build-road") {
+              const wet = [cmd.start, cmd.end].some((pt) => pt && Number(pt.x) > 600 && Math.abs(Number(pt.elevation ?? 0)) < 1);
+              result = wet
+                ? { ok: false, error: "Cannot build on water: endpoint" }
+                : { ok: true, dryRun: dry, segmentId: 9500 + i, createdNodeIds: [], waterCheck: { onWater: false } };
+            } else {
+              result = { ok: true, dryRun: dry, changedCells: 8 };
+            }
+            results.push({ index: i, type, result });
+            if (result.ok) {
+              executed++;
+            } else {
+              allOk = false;
+              if (stopOnError) {
+                for (let j = i + 1; j < commands.length; j++) results.push({ index: j, type: commands[j].type ?? "", skipped: true });
+                break;
+              }
+            }
+          }
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: allOk, results, executed, allOk }));
           return;
         }
 

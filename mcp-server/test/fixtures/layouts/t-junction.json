@@ -1,0 +1,21 @@
+{
+  "name": "t-junction",
+  "version": 1,
+  "description": "Tiny 3-node T test fixture: stem then a cross bar, for stamp unit tests only.",
+  "geometryStatus": "UNVERIFIED IN GAME",
+  "anchor": "origin = centre of the layout; +z = main axis at angleDeg 0; angleDeg rotates clockwise seen from above (standard CS1 angle convention used by place-building angleDegrees)",
+  "roles": {
+    "main": { "default": "Basic Road", "allowed": ["Basic Road", "Medium Road"] }
+  },
+  "nodes": {
+    "A": { "x": 0, "z": -40, "elevation": 0 },
+    "B": { "x": 0, "z": 0, "elevation": 0 },
+    "C": { "x": 40, "z": 0, "elevation": 0 }
+  },
+  "segments": [
+    { "from": "A", "to": "B", "role": "main", "name": "stem" },
+    { "from": "B", "to": "C", "role": "main", "name": "bar" }
+  ],
+  "footprint": { "minX": -8, "maxX": 48, "minZ": -48, "maxZ": 8 },
+  "notes": ["Test fixture only, not a real layout; geometry is UNVERIFIED IN GAME."]
+}

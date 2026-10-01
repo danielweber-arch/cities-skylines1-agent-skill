@@ -2,7 +2,10 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../client.js";
 import { SUMMARY_CHAR_BUDGET, encode } from "../filters.js";
-import { ZONE_NAMES, fail, image, text } from "./shared.js";
+import { ZONE_NAMES, fail, failMessage, image, text } from "./shared.js";
+import { CityGuardError, guardSessionCity } from "../cityContext.js";
+import { enforcePlan, blockedMessage } from "../planGuard.js";
+import type { Plan } from "../checker.js";
 
 const point = z.object({
   x: z.number().describe("World X in metres."),
@@ -30,13 +33,182 @@ const WATER_GUARD_NOTE =
   "pipes, power lines, quays, canals, flood walls, ship and ferry paths, bridge and tunnel " +
   "pieces, dams, and endpoints with |elevation| >= 1 m.";
 
+/**
+ * Plan builder for cs1_build_grid: one PlanRoad per LATTICE PIECE (each exactly `spacing` long,
+ * between adjacent lattice nodes), rows and columns, rather than one PlanRoad per whole line.
+ * This is what lets an existing road that meets the lattice exactly at a real lattice node land
+ * on a real plan-segment endpoint, so H-CROSSING's "> 8 m from any node" test correctly treats it
+ * as a join rather than a false crossing. The point count sampled by the checker is unchanged
+ * (same number of 8 m samples either way).
+ */
+export function buildGridPlan(body: Record<string, unknown>): Plan | null {
+  const origin = body.origin as { x: number; z: number } | undefined;
+  const cols = Number(body.cols ?? 0);
+  const rows = Number(body.rows ?? 0);
+  const spacing = Number(body.spacing ?? 80);
+  const roadPrefab = String(body.roadPrefab ?? "");
+  if (!origin || !cols || !rows) return null;
+  const roads: Plan["roads"] = [];
+  // Horizontal pieces: rows+1 lines, each split into `cols` pieces of length `spacing`.
+  for (let r = 0; r <= rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      roads!.push({
+        prefab: roadPrefab,
+        points: [
+          { x: origin.x + c * spacing, z: origin.z + r * spacing },
+          { x: origin.x + (c + 1) * spacing, z: origin.z + r * spacing },
+        ],
+      });
+    }
+  }
+  // Vertical pieces: cols+1 lines, each split into `rows` pieces of length `spacing`.
+  for (let c = 0; c <= cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      roads!.push({
+        prefab: roadPrefab,
+        points: [
+          { x: origin.x + c * spacing, z: origin.z + r * spacing },
+          { x: origin.x + c * spacing, z: origin.z + (r + 1) * spacing },
+        ],
+      });
+    }
+  }
+  return { roads };
+}
+
+/** Plan builder for cs1_build_neighborhood: centres a grid, then reuses buildGridPlan. */
+export function buildNeighborhoodPlan(body: Record<string, unknown>): Plan | null {
+  const center = body.center as { x: number; z: number } | undefined;
+  const cols = Number(body.cols ?? body.radiusOrCols ?? 4);
+  const rows = Number(body.rows ?? body.radiusOrCols ?? 4);
+  const spacing = Number(body.spacing ?? 80);
+  const roadPrefab = String(body.roadPrefab ?? "");
+  if (!center) return null;
+  const origin = { x: center.x - (cols * spacing) / 2, z: center.z - (rows * spacing) / 2 };
+  return buildGridPlan({ origin, cols, rows, spacing, roadPrefab });
+}
+
 export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
-  const run = async (path: string, body: unknown) => {
+  /**
+   * Session city guard (HARD, no opt-out) plus optional inline plan enforcement, in front of
+   * every mutation tool (wave2-spec.md section 3 and section 8). `planBuilder` converts the
+   * tool's args into a checker Plan; when it returns a HARD verdict the bridge is never called.
+   */
+  const run = async (path: string, body: Record<string, unknown>, planBuilder?: (body: Record<string, unknown>) => Plan | null) => {
     try {
-      return text(encode(await bridge.post(path, body), SUMMARY_CHAR_BUDGET));
+      const guard = await guardSessionCity(bridge);
+
+      let planCheckAttach: Record<string, unknown> | undefined;
+      if (planBuilder) {
+        const plan = planBuilder(body);
+        if (plan) {
+          const check = await enforcePlan(plan, bridge);
+          if (check.verdict === "blocked") {
+            const msg = blockedMessage(check);
+            // When the guard just auto-declared the session city, keep that declaration visible
+            // even though the plan check is about to block the call outright.
+            const prefixed = guard.note && guard.city ? `${msg} [session bound to ${guard.city.name} (${guard.city.id})]` : msg;
+            return failMessage(prefixed);
+          }
+          if (check.verdict === "advisory") {
+            planCheckAttach = { advisory: check.advisory, advisoryTotal: check.advisoryTotal };
+          }
+        }
+      }
+
+      const result = (await bridge.post(path, body)) as Record<string, unknown>;
+      const withCity = guard.note ? { ...result, city: guard.city, note: guard.note } : result;
+      const withPlanCheck = planCheckAttach ? { ...withCity, planCheck: planCheckAttach } : withCity;
+      return text(encode(withPlanCheck, SUMMARY_CHAR_BUDGET));
     } catch (error) {
+      if (error instanceof CityGuardError) return fail(error);
       return fail(error);
     }
+  };
+
+  /**
+   * cs1_connect needs special handling when toService is Road (the default): the plan that
+   * actually gets built is `from` -> wherever the bridge's own dry run resolves as the nearest
+   * network node, not a synthetic point at `from`. So the checker previously ran a plan that
+   * never covered the real road at all. Fix: run the bridge's dry run first to learn
+   * targetPosition, plan-check the real from->targetPosition road, then do the real call (or
+   * reuse the dry-run result when the caller only asked for a dry run). If the dry run has no
+   * usable targetPosition (alreadyConnected or error), fall back to the previous behaviour: no
+   * plan check, straight through to the bridge. Pipes/power (toService != Road) stay exempt.
+   */
+  const runConnect = async (body: Record<string, unknown>) => {
+    try {
+      const guard = await guardSessionCity(bridge);
+      const toService = String(body.toService ?? "Road");
+      let planCheckAttach: Record<string, unknown> | undefined;
+      let probeResult: Record<string, unknown> | undefined;
+
+      if (toService === "Road") {
+        try {
+          probeResult = (await bridge.post("/commands/connect", { ...body, dryRun: true })) as Record<string, unknown>;
+        } catch {
+          probeResult = undefined;
+        }
+        const targetPosition = probeResult?.targetPosition as { x: number; z: number } | undefined;
+        const usable = Boolean(targetPosition) && !probeResult?.alreadyConnected && !probeResult?.error;
+        if (usable && targetPosition) {
+          const from = body.from as { x: number; z: number };
+          const roadPrefab = String(body.roadPrefab ?? "Basic Road");
+          const plan: Plan = { roads: [{ prefab: roadPrefab, points: [from, targetPosition] }] };
+          const check = await enforcePlan(plan, bridge);
+          if (check.verdict === "blocked") {
+            const msg = blockedMessage(check);
+            const prefixed = guard.note && guard.city ? `${msg} [session bound to ${guard.city.name} (${guard.city.id})]` : msg;
+            return failMessage(prefixed);
+          }
+          if (check.verdict === "advisory") {
+            planCheckAttach = { advisory: check.advisory, advisoryTotal: check.advisoryTotal };
+          }
+        }
+      }
+
+      // Reuse the probe when the caller only wanted a dry run and the probe succeeded, rather
+      // than posting an identical dryRun:true call to the bridge a second time.
+      const result =
+        toService === "Road" && body.dryRun === true && probeResult
+          ? probeResult
+          : ((await bridge.post("/commands/connect", body)) as Record<string, unknown>);
+      const withCity = guard.note ? { ...result, city: guard.city, note: guard.note } : result;
+      const withPlanCheck = planCheckAttach ? { ...withCity, planCheck: planCheckAttach } : withCity;
+      return text(encode(withPlanCheck, SUMMARY_CHAR_BUDGET));
+    } catch (error) {
+      if (error instanceof CityGuardError) return fail(error);
+      return fail(error);
+    }
+  };
+
+  const networkPlan = (body: Record<string, unknown>): Plan | null => {
+    const start = body.start as { x: number; z: number } | undefined;
+    const end = body.end as { x: number; z: number } | undefined;
+    const roadPrefab = String(body.roadPrefab ?? "");
+    if (!start || !end) return null;
+    return { roads: [{ prefab: roadPrefab, points: [start, end] }] };
+  };
+
+  const placeBuildingPlan = (body: Record<string, unknown>): Plan | null => {
+    const position = body.position as { x: number; z: number } | undefined;
+    if (!position) return null;
+    return {
+      buildings: [
+        {
+          prefab: String(body.buildingPrefab ?? ""),
+          position,
+          angleDegrees: body.angleDegrees as number | undefined,
+        },
+      ],
+    };
+  };
+
+  const setZonePlan = (body: Record<string, unknown>): Plan | null => {
+    const center = body.center as { x: number; z: number } | undefined;
+    const radius = Number(body.radius ?? 0);
+    if (!center || !radius) return null;
+    return { zones: [{ zone: String(body.zone ?? ""), center, radius }] };
   };
 
   // ------------------------------------------------------------ composite builders
@@ -79,7 +251,7 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         dryRun,
       },
     },
-    async (args) => run("/commands/build-grid", args),
+    async (args) => run("/commands/build-grid", args, buildGridPlan),
   );
 
   server.registerTool(
@@ -137,7 +309,7 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         dryRun,
       },
     },
-    async (args) => run("/commands/build-neighborhood", args),
+    async (args) => run("/commands/build-neighborhood", args, buildNeighborhoodPlan),
   );
 
   server.registerTool(
@@ -166,7 +338,7 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         dryRun,
       },
     },
-    async (args) => run("/commands/connect", args),
+    async (args) => runConnect(args),
   );
 
   // --------------------------------------------------------------- primitive builds
@@ -195,7 +367,7 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         dryRun,
       },
     },
-    async (args) => run("/commands/build-network", args),
+    async (args) => run("/commands/build-network", args, networkPlan),
   );
 
   server.registerTool(
@@ -213,7 +385,7 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         dryRun,
       },
     },
-    async (args) => run("/commands/set-zone", args),
+    async (args) => run("/commands/set-zone", args, setZonePlan),
   );
 
   server.registerTool(
@@ -236,7 +408,7 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         dryRun,
       },
     },
-    async (args) => run("/commands/place-building", args),
+    async (args) => run("/commands/place-building", args, placeBuildingPlan),
   );
 
   server.registerTool(

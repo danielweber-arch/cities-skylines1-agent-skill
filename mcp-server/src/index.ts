@@ -14,6 +14,9 @@ import { registerCommandTools } from "./tools/commands.js";
 import { registerTransitTools } from "./tools/transit.js";
 import { registerChatTools } from "./tools/chat.js";
 import { registerPlanTools } from "./tools/plan.js";
+import { registerTerrainTools } from "./tools/terrain.js";
+import { registerPlanCheckTools } from "./tools/planTools.js";
+import { registerCityTools } from "./tools/cityTools.js";
 
 async function main() {
   const bridge = new BridgeClient();
@@ -45,7 +48,10 @@ async function main() {
   registerCommandTools(server, bridge);
   registerTransitTools(server, bridge);
   registerChatTools(server, bridge);
-  registerPlanTools(server);
+  registerPlanTools(server, bridge);
+  registerTerrainTools(server, bridge);
+  registerPlanCheckTools(server, bridge);
+  registerCityTools(server, bridge);
 
   // stdout is the MCP transport — anything written there that is not a protocol message
   // corrupts the session, so diagnostics go to stderr.

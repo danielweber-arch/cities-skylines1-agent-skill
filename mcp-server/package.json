@@ -7,7 +7,7 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.js"
+    "test": "node --import tsx --test test/*.test.js"
   },
   "keywords": [],
   "author": "",

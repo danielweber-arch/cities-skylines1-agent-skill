@@ -10,6 +10,7 @@ import {
   summarizeTransit,
 } from "../filters.js";
 import { fail, text } from "./shared.js";
+import { CityGuardError, guardSessionCity } from "../cityContext.js";
 
 /** TransportInfo.TransportType names, as the mod accepts them for ?type= filtering. */
 export const TRANSPORT_TYPES = [
@@ -95,8 +96,12 @@ const snapDistances = {
 export function registerTransitTools(server: McpServer, bridge: BridgeClient) {
   const run = async (path: string, body: unknown) => {
     try {
-      return text(encode(await bridge.post(path, body), SUMMARY_CHAR_BUDGET));
+      const guard = await guardSessionCity(bridge);
+      const result = (await bridge.post(path, body)) as Record<string, unknown>;
+      const withCity = guard.note ? { ...result, city: guard.city, note: guard.note } : result;
+      return text(encode(withCity, SUMMARY_CHAR_BUDGET));
     } catch (error) {
+      if (error instanceof CityGuardError) return fail(error);
       return fail(error);
     }
   };
