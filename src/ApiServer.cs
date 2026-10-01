@@ -204,7 +204,8 @@ namespace SkylinesAgentBridge
                     ",\"port\":" + port +
                     ",\"capabilities\":[\"composite-commands\",\"capture\",\"node-snapping\",\"idempotent-ops\",\"transit\",\"chat\"]" +
                     ",\"defaultSpacing\":" + JsonUtil.Number(CompositeCommands.DefaultSpacing) +
-                    ",\"snapDistance\":" + JsonUtil.Number(NodeHelper.DefaultSnapDistance) + "}");
+                    ",\"snapDistance\":" + JsonUtil.Number(NodeHelper.DefaultSnapDistance) +
+                    ",\"city\":" + (bridge.LevelLoaded ? CityIdentity.BuildCityJson() : "null") + "}");
             }
 
             if (request.Method == "GET" && request.Path == "/state/summary")
@@ -306,6 +307,22 @@ namespace SkylinesAgentBridge
                     return HttpResponse.Json(400, "{\"ok\":false,\"error\":\"" + JsonUtil.Escape(terrainError) + "\"}");
                 }
                 return RunOnGameThread(request, delegate { return TerrainState.BuildTerrainJson(terrainPoints); });
+            }
+
+            if (request.Method == "GET" && request.Path == "/state/terrain/grid")
+            {
+                float gridX = request.GetQueryFloat("x", float.NaN);
+                float gridZ = request.GetQueryFloat("z", float.NaN);
+                float gridRadius = request.GetQueryFloat("radius", TerrainGridState.DefaultRadius);
+                float gridCell = request.GetQueryFloat("cell", TerrainGridState.DefaultCell);
+                float gridSteep = request.GetQueryFloat("steep", TerrainGridState.DefaultSteep);
+                int gridSide;
+                string gridError = TerrainGridState.Validate(gridX, gridZ, gridRadius, gridCell, gridSteep, out gridSide);
+                if (gridError != null)
+                {
+                    return HttpResponse.Json(400, "{\"ok\":false,\"error\":\"" + JsonUtil.Escape(gridError) + "\"}");
+                }
+                return RunOnGameThread(request, delegate { return TerrainGridState.BuildGridJson(gridX, gridZ, gridRadius, gridCell, gridSteep, gridSide); });
             }
 
             if (request.Method == "GET" && request.Path == "/state/saves")
@@ -454,6 +471,22 @@ namespace SkylinesAgentBridge
                 float radius = request.GetQueryFloat("radius", 500f);
                 bool hasArea = !float.IsNaN(x) && !float.IsNaN(z);
                 return RunOnGameThread(request, delegate { return TrafficState.BuildTrafficJson(limit, minDensity, hasArea, x, z, radius); });
+            }
+
+            if (request.Method == "GET" && request.Path == "/state/segment-route-share")
+            {
+                int shareSegment = request.GetQueryInt("segment", 0);
+                float shareX = request.GetQueryFloat("x", float.NaN);
+                float shareZ = request.GetQueryFloat("z", float.NaN);
+                float shareRadius = request.GetQueryFloat("radius", SegmentRouteShare.DefaultRadius);
+                int shareLimit = request.GetQueryInt("limit", SegmentRouteShare.DefaultLimit);
+                int shareBudget = request.GetQueryInt("budget", SegmentRouteShare.DefaultBudget);
+                string shareError = SegmentRouteShare.Validate(shareSegment, shareX, shareZ, shareRadius);
+                if (shareError != null)
+                {
+                    return HttpResponse.Json(400, "{\"ok\":false,\"error\":\"" + JsonUtil.Escape(shareError) + "\"}");
+                }
+                return RunOnGameThread(request, delegate { return SegmentRouteShare.BuildJson(shareSegment, shareX, shareZ, shareRadius, shareLimit, shareBudget); });
             }
 
             if (request.Method == "GET" && request.Path == "/state/policies")

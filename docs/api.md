@@ -33,9 +33,50 @@ The intended workflow is intentionally generic:
 
 Returns bridge status without requiring a loaded city.
 
+Since wave 2 it also carries a `city` block identifying the loaded city, so an
+agent can keep per-city notes apart. It is `null` when no level is loaded.
+UNVERIFIED IN GAME (compile-only, 2026-10-01).
+
+```bash
+curl -sS "http://127.0.0.1:32123/health"
+```
+
+```json
+{"ok":true,"mod":"Skylines Agent Bridge","levelLoaded":true,"port":32123,"capabilities":["composite-commands","capture","node-snapping","idempotent-ops","transit","chat"],"defaultSpacing":80,"snapDistance":8,
+ "city":{"id":"6c1f...","name":"Portville","map":"Riverrun","environment":"Europe","gameDate":"2026-10-03","population":41800,"lastSaveName":"Portville"}}
+```
+
+`city` fields (any string field is `null` when the game has none):
+
+- `id`: `SimulationMetaData.m_gameInstanceIdentifier`. The game keeps it across
+  saves of the same city, so it is the key for per-city context.
+- `name`: `m_CityName`. `map`: `m_MapName`. `environment`: `m_environment`
+  (for example `Europe`, `Sunny`, `North`, `Tropical`).
+- `gameDate`: `m_currentDateTime` as `yyyy-MM-dd` (invariant culture).
+- `population`: district 0 (the whole city) `m_populationData.m_finalCount`.
+- `lastSaveName`: the game's own last save/load name (`SavePanel.m_LastSaveName`,
+  private static, read by reflection; set by the game on every save and by the
+  load panel on load), else the last save requested through
+  `POST /commands/save` in this process, else `null`. `SimulationMetaData` has
+  no save-name field.
+
+The block is read off the game thread (the health route does not queue onto
+the simulation), so a value can be one frame stale. Size: a few hundred bytes.
+
 ## GET /state/summary
 
 Returns a small city snapshot: game time, build index, network counts, citizen count, and demand values.
+
+It also carries the same `city` block as `GET /health` (see there), placed
+right after `ok`. UNVERIFIED IN GAME (compile-only, 2026-10-01).
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/summary"
+```
+
+```json
+{"ok":true,"gameTime":"2026-10-03T08:12:00","city":{"id":"6c1f...","name":"Portville","map":"Riverrun","environment":"Europe","gameDate":"2026-10-03","population":41800,"lastSaveName":"Portville"},"buildIndex":123456,"simulation":{"paused":false,"selectedSpeed":1,"finalSpeed":1},"network":{"nodes":900,"segments":1100,"lanes":3000},"citizens":{"count":52000},"demand":{"residential":40,"commercial":20,"workplace":30}}
+```
 
 ## GET /state/demand
 
@@ -126,6 +167,79 @@ just the raw requested point.
 only; it is not exposed through any MCP tool (see Water guard below). A
 refusal is HTTP 500 with `ok:false` and the error string, and carries no
 `waterCheck` field.
+
+## GET /state/terrain/grid
+
+A compact character map of a square area: where ground pieces fit, where it is
+steep, where the water and the shore are, and an indicative flow per water
+body. One call replaces dozens of `/state/terrain` samples when planning a
+district. UNVERIFIED IN GAME (compile-only, 2026-10-01).
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/terrain/grid?x=0&z=0&radius=512&cell=64"
+curl -sS "http://127.0.0.1:32123/state/terrain/grid?x=1200&z=-300&radius=2048&cell=64&steep=6"
+```
+
+Query parameters:
+
+| Name | Default | Limits | Meaning |
+|------|---------|--------|---------|
+| `x`, `z` | required | | grid centre (m) |
+| `radius` | 512 | > 0, max 2048 | half the side of the square (m) |
+| `cell` | 64 | min 16 | cell size (m) |
+| `steep` | 8 | > 0 | grade (%) above which a dry cell is `^` |
+
+Cells per side `N = ceil(2*radius/cell)`. `N > 64` is a 400 ("reduce radius or
+raise cell"); so is a missing `x`/`z` or an out-of-range value. 409 when no
+city is loaded, like every other `/state` route. Runs on the game thread.
+
+Response (compact, numbers rounded to 1 decimal):
+
+```json
+{"ok":true,"center":{"x":0.0,"z":0.0},"radius":512.0,"cell":64.0,"cols":16,"rowCount":16,
+ "origin":{"x":-512.0,"z":-512.0},"rowOrder":"row 0 = north (max z), col 0 = west (min x); char (r,c) centre = origin + ((c+0.5)*cell, 2*radius-(r+0.5)*cell)",
+ "legend":{".":"dry, grade <= 8.0%","^":"dry, grade > 8.0%","~":"water (all 5 samples)","?":"mixed shore (some samples wet)"},
+ "rows":["......~~~~......","....?~~~~~?....."],
+ "minHeight":12.3,"maxHeight":88.0,"counts":{"dry":200,"steep":10,"water":40,"mixed":6},
+ "flow":[{"id":1,"cells":40,"sampled":40,"bbox":{"minX":-96.0,"maxX":224.0,"minZ":-160.0,"maxZ":96.0},"meanVelocity":{"x":0.2,"z":-1.1},"speed":1.1,"still":false}],
+ "flowNote":"instantaneous surface velocity, indicative only; a bay or lake reads still and sewage there reaches intakes; speed = mean of per-cell speeds; still = speed < 0.1 (game water-sim units)",
+ "flowTruncated":0}
+```
+
+(`rows` is shortened above; a real response has `rowCount` strings of `cols`
+characters.) Per flow region, `sampled` is how many of its cells returned a
+water-simulation sample, `bbox` is the region's cell extent (used by the plan
+checker's sewage rule to decide which region a facility sits on), `speed` is
+the mean of the per-cell speeds (not the length of the mean vector, so two
+opposing currents do not read as still), and `still` is `null` when no cell
+could be sampled: unknown is not still.
+
+How each cell is classified: 5 sub-samples (the cell centre and its 4
+corners), each tested with the same water test the build guard uses
+(`WaterGuard.PointHasWater`: the game's `hasWater` block flag, or a surface
+more than 5 cm above the terrain; never a fixed height threshold).
+
+- `~`: all 5 samples wet.
+- `?`: some wet, some dry (shore).
+- `^`: none wet, and the steepest grade between the centre and a corner
+  (height difference over the half-diagonal, water-free terrain height) is
+  above `steep` %.
+- `.`: none wet, grade within `steep`. Only `.` is buildable for ground pieces.
+
+`minHeight`/`maxHeight` are the water-free terrain heights over all samples.
+
+`flow`: each 4-connected region of `~` cells, largest first, at most 8
+(`flowTruncated` counts the rest). `meanVelocity` is the mean of
+`TerrainManager.SampleWaterData` velocity at each cell centre (that call takes
+the water simulation's `BeginRead`/`EndRead` lock itself). The unit is the
+game's water-simulation velocity (an int16 cell velocity scaled by about
+1/4369), not calibrated m/s. `still` is `speed < 0.1` in that unit. It is an
+instantaneous reading and indicative only: a bay or lake reads still, and
+sewage released there reaches water intakes. The water surface itself moves
+several metres a minute, so the grid is a snapshot too.
+
+Worst case: 64 x 64 cells, 8 flow regions, about 5.7 KB (about 1.4K tokens).
+Cost: `N*N*5` terrain samples plus one water-data sample per `~` cell.
 
 ## GET /prefabs/roads
 
@@ -1035,6 +1149,89 @@ The response also carries:
 - `densityHistogram`.
 - `trafficFlowPercent`: `VehicleManager.m_lastTrafficFlow`, the "average traffic flow" in the Traffic info view. It is city-wide and ignores the area filter.
 
+### GET /state/segment-route-share
+
+Which vehicles' CURRENT remaining route includes one road segment at this
+instant, broken down by vehicle class and by origin/destination area. It is
+not throughput: a vehicle counts once, whether it reaches the segment in ten
+seconds or ten minutes. UNVERIFIED IN GAME (compile-only, 2026-10-01).
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/segment-route-share?segment=1234"
+curl -sS "http://127.0.0.1:32123/state/segment-route-share?x=800&z=-450&radius=300&limit=20"
+```
+
+Query parameters:
+
+| Name | Default | Limits | Meaning |
+|------|---------|--------|---------|
+| `segment` | | segment id | the segment to test |
+| `x`, `z`, `radius` | radius 500 | radius > 0 | instead of `segment`: the `RoadBaseAI` segment with the highest `m_trafficDensity` whose middle is in the circle (ties to the lowest id) |
+| `limit` | 10 | 1..50 | top origin/destination pairs returned |
+| `budget` | 150000 | 1..1000000 | path units walked, across all vehicles |
+
+400 when neither `segment` nor `x`/`z` is given or the radius is not positive;
+500 with `ok:false` when the segment does not exist or no road is in the
+radius; 409 when no city is loaded. Runs on the game thread.
+
+Response:
+
+```json
+{"ok":true,"segment":{"id":1234,"prefab":"Highway","density":87,"start":{"x":812.0,"z":-460.0},"end":{"x":900.0,"z":-380.0}},
+ "meaning":"vehicles whose CURRENT remaining route includes this segment at this instant; not throughput",
+ "scanned":9000,"hopCapped":3,"totalActive":11200,"truncated":true,"sample":true,
+ "pathUnitsWalked":150000,"budget":150000,"matched":312,
+ "byClass":{"passengerCar":200,"cargoTruck":80,"transit":12,"service":10,"other(CargoTrainAI)":10},
+ "outsideToOutside":40,"fromOutside":60,"toOutside":55,
+ "topPairs":[{"from":"Downtown","to":"outside","count":30}],"pairsTotal":57,"pairsTruncated":47}
+```
+
+How it is computed:
+
+- The vehicle buffer is scanned from a random start, wrapping around. A
+  vehicle is eligible when it is `Created`, not `Deleted`, is a leading
+  vehicle (`m_leadingVehicle == 0`; trailers share the leader's route), is not
+  cargo carried inside a ship or train (`m_cargoParent == 0`), has a path
+  (`m_path != 0`) and is not `WaitingPath`. `totalActive` counts eligible
+  vehicles.
+- Each eligible vehicle's remaining path is walked from position index
+  `m_pathPositionIndex >> 1` in unit `m_path`, through the unit's
+  `m_positionCount` positions, then on to `m_nextPathUnit` from index 0
+  (the same walk the game's `TrainAI.ResetTargets` does). A walk stops when
+  the segment is found, the chain ends, or after 64 units. Every unit visited
+  counts against `budget`.
+- A vehicle whose route continues past the 64-unit cap is NOT counted as
+  scanned (`hopCapped` counts them), so a target segment beyond the cap never
+  reads as "not on the route".
+- `scanned` is the number of vehicles whose walk finished. When the budget
+  runs out the remaining vehicles are not walked: `truncated` and `sample` are
+  then `true`, and every count is a sample of the vehicles scanned (from a
+  random start), not a total.
+- `byClass` by `VehicleInfo.m_vehicleAI` type: `passengerCar`
+  (`PassengerCarAI`), `cargoTruck` (`CargoTruckAI`), `transit` (`BusAI`,
+  `TramAI`, `PassengerTrainAI` incl. metro and monorail, `TrolleybusAI`,
+  `PassengerFerryAI`, `PassengerShipAI`, `PassengerPlaneAI`,
+  `PassengerBlimpAI`, `PassengerHelicopterAI`, `CableCarAI`, `TaxiAI`),
+  `service` (fire, police, ambulance, hearse, garbage, road maintenance, post,
+  snow, disaster response, park maintenance, water truck, bank van, and their
+  helicopters), and `other(<AI class name>)` for anything else. Nothing is
+  dropped. The four main keys are always present.
+- Origin and destination area: the district name of `m_sourceBuilding` /
+  `m_targetBuilding` (`DistrictManager.GetDistrict` on the building position),
+  `outside` when that building is an outside connection
+  (`OutsideConnectionAI`), `none` when it is in no district, `unknown` when
+  the building id is 0. An unnamed district reads `district <n>`.
+- `outsideToOutside`: vehicles flagged `DummyTraffic` or with both ends
+  outside. `fromOutside` / `toOutside`: only one end outside. The three do
+  not overlap.
+- `topPairs`: the `limit` most common (from, to) pairs, ties by name.
+  `pairsTotal` distinct pairs, `pairsTruncated` the ones not listed.
+
+Worst case: about 1.5 KB at the default `limit=10`; about 5.7 KB at
+`limit=50` with long district names. Cost: up to `budget` path units walked
+on the game thread (default 150000), plus one flag check per vehicle slot
+(16384).
+
 ### GET /state/policies
 
 Returns:
@@ -1137,6 +1334,198 @@ Before anything changes, every point is snapped, every index is checked, and the
 - Services, Taxation and CityPlanning policies can be set city-wide or per district. Specialization policies are per district only. Special, Event and Park policies are refused.
 - The policy must be loaded (the DLC is present) and unlocked.
 - The response gives `before`, `after` and `changed`.
+
+## MCP tools: plan checker, layouts, per-city context (wave 2, 2026-10-01)
+
+These are `mcp-server/src/` tools, not raw HTTP routes (`cs1_terrain_map` and
+`cs1_segment_route_share` wrap the HTTP routes documented above; the rest have no HTTP
+equivalent). UNVERIFIED IN GAME: measured against the mock bridge and unit tests only, game not
+running during this wave.
+
+### cs1_terrain_map
+
+Wraps `GET /state/terrain/grid` (see above) and returns the payload as-is. Args: `x`, `z`
+(required), `radius` (16-2048, default 512), `cell` (min 16, default 64), `steep` (default 8).
+Cap 6000 chars; over cap, optional fields are dropped in order (`flow`, `flowNote`,
+`flowTruncated`, `legend`, `rowOrder`; the response then carries `dropped:[...]`), then arrays
+are trimmed with a count, and as a last resort a tiny `{truncated:true, sizeChars, keys}` object
+is returned. The text is always valid JSON; it is never sliced. Measured on the mock (256 m radius, 32 m
+cell, 16x16 grid): 856 chars (~214 tokens). Worst case per the HTTP route above: about 5.7 KB
+(~1.4K tokens) for a 64x64 grid with 8 flow regions, still under the 6000-char cap. Cached to
+`cities/<slug>/cache/terrain-map-<x>_<z>_<radius>_<cell>.json` when the loaded city resolves to a
+context dir (silent no-op otherwise; adds `cached:"<relative path>"` only).
+
+### cs1_segment_route_share
+
+Wraps `GET /state/segment-route-share` (see above). Args: `segmentId` or `x`+`z` (+ optional
+`radius`), `limit` (1-50, default 10), `budget` (1-1,000,000, default 150000). Cap 2000 chars;
+over cap, `topPairs` is truncated entry by entry with `pairsTruncated` updated to the true dropped
+count, then optional fields are dropped (`topPairs`, `meaning`, `byClass`) with `dropped:[...]`;
+never sliced, always valid JSON. Measured on the mock (20 `topPairs` rows): 1460 chars (~365 tokens). Cached to
+`cache/route-share-<segmentId>.json` the same way as `cs1_terrain_map`.
+
+### cs1_check_plan and the plan checker
+
+`cs1_check_plan {plan}` runs the pure checker (`mcp-server/src/checker.ts`) through
+`planGuard.ts`'s `enforcePlan`, which wires the checker to live reads (`/state/terrain`,
+`/state/networks?service=Road`, `/state/growables?service=Residential`,
+`/state/facilities?service=Water`, `/state/terrain/grid`). It never POSTs to the bridge; it only
+reads state to check the plan, and returns the verdict only. Measured on the mock (a single 10 m
+`Basic Road` segment, one A-SHORT advisory): 301 chars (~76 tokens). Cap 4000 chars; advisory list
+capped at 20 entries; HARD findings are never truncated.
+
+Plan shape:
+
+```ts
+type Plan = {
+  roads?: Array<{ prefab: string; points: Array<{x:number; z:number; elevation?:number}>; name?: string }>;
+  zones?: Array<{ zone: string; center:{x:number;z:number}; radius:number }>;
+  buildings?: Array<{ prefab: string; position:{x:number;z:number}; angleDegrees?: number; widthCells?: number; lengthCells?: number }>;
+  standingOrders?: StandingOrders; // optional inline override; otherwise parsed from the loaded city's city.md
+};
+```
+
+Sample verdict shape:
+
+```json
+{"verdict":"blocked","hard":[{"rule":"H-WATER","msg":"...","at":{"x":0,"z":0}}],
+ "advisory":[{"rule":"A-SHORT","msg":"...","at":{"x":0,"z":0}}],"advisoryTotal":3,
+ "checked":{"points":120,"segments":14,"zones":2,"buildings":1},"sources":{"terrainCalls":2}}
+```
+
+HARD rules (block, never truncated):
+
+| Rule | Trigger | Citation |
+|---|---|---|
+| H-WATER | any ground road point/centreline sample (<= 8 m spacing), building position/footprint corner, or zone centre on water | Water guard above; `CLAUDE.md` hard gate |
+| H-NOBUILD | a road sample, building position/corner, or zone circle inside a standing-order `NO-BUILD` polygon/bbox | `CLAUDE.md` Standing orders |
+| H-TURN | a `Metro`/`Train` (track) road whose interior XZ turn exceeds 40 deg | `lessons.md` Proven Rules ("every node turn <= 40 deg") |
+| H-CROSSING | a plan road segment properly crossing an existing one (from `/state/networks?service=Road`) more than 8 m from both plan endpoints and the existing segment's nodes | `SKILL.md` Known Gotchas (node reuse snaps within 8 m). Downgrades to ADVISORY ("network too large to check") when `/state/networks` `total` exceeds the rows returned |
+
+ADVISORY rules (capped at 20 entries, counted in `advisoryTotal`):
+
+| Rule | Trigger | Citation |
+|---|---|---|
+| A-SHORT | a segment shorter than 32 m | `SKILL.md` Inspection Loop `shortSegmentLength` default |
+| A-GRADE | `\|dElevation + dTerrain\| / length > 8%` | `knowledge.md` Roads (<= 8%), `lessons.md:451` |
+| A-HIERARCHY | a `Basic Road` segment sharing an endpoint (<= 8 m) with a plan or existing `Highway` segment | `knowledge.md` Traffic (UNVERIFIED, advisory only) |
+| A-INDUSTRY-BUFFER | an `Industrial` zone circle within 200 m of a `Residential` zone circle (plan or existing growable) | `knowledge.md` Pollution 200 m rule, `cities/portville/plan.md:899-901` |
+| A-HDCOMM-BUFFER | a `CommercialHigh` zone within 32 m (4 cells) of a `Residential` zone | `knowledge.md` Zoning (UNVERIFIED) |
+| A-SEWAGE | an outflow prefab (name has "Outlet"/"Drain"/"Treatment") upstream of, or sharing a still water body with, an intake prefab ("Intake"/"Pumping"), per `GET /state/terrain/grid` flow at the midpoint | `knowledge.md` Water and sewage (indicative only, never HARD) |
+
+Inline enforcement: `cs1_build_grid`, `cs1_build_neighborhood`, `cs1_build_network`,
+`cs1_connect` (road prefabs only; pipes/power exempt), `cs1_place_building`, `cs1_set_zone` and
+`cs1_stamp_layout` all run the checker before touching the bridge, including dry runs. On HARD,
+the tool returns `ERROR: plan check blocked: <rule>: <msg> | ...` and the bridge is never called;
+there is no opt-out. On ADVISORY, the real call proceeds and the response gains
+`planCheck:{advisory:[...], advisoryTotal:n}`. Deviation: `cs1_build_grid` /
+`cs1_build_neighborhood` approximate the lattice as whole row/column lines rather than the real
+bridge's per-cell pieces, so H-CROSSING/H-TURN scan a slightly larger shape (conservative for
+H-WATER/H-NOBUILD, occasionally over-reports a crossing a real piecewise build would avoid).
+
+`CS1_CITY_FILE` env overrides where standing orders are read from; else the loaded city's
+`cities/<slug>/city.md` (via `resolveCityDir`); else the repo root `city.md`. Only these machine
+lines, under a `## Standing orders` or `## Protected areas` heading, are parsed - everything else
+in that section is prose for the human/model reviewer:
+
+```
+- NO-BUILD <name>: bbox <minX>,<minZ> <maxX>,<maxZ>
+- NO-BUILD <name>: polygon <x>,<z>;<x>,<z>;...
+- MAX-SPEND <number>
+```
+
+### cs1_stamp_layout and layout templates
+
+Args: `name` (reads `templates/layouts/<name>.json`, `CS1_LAYOUT_DIR` overrides the default
+`<repo>/templates/layouts`), `anchor:{x,z}`, `angleDeg`, `roads?` (role -> prefab override,
+validated against the role's `allowed` list), `dryRun?`.
+
+Rotation: world point = anchor + rotate(local, angleDeg), where `x' = x*cos(a) + z*sin(a)`,
+`z' = -x*sin(a) + z*cos(a)`, `a` in radians (the same convention as `angleDegrees` elsewhere in
+this server; unit-tested in `checker.test.js`).
+
+Flow: (1) build the plan from the template's nodes/segments/roles, (2) run the plan checker (a
+HARD block comes back as `ERROR: plan check blocked: ...`, no opt-out, nothing posted), (3)
+dry-run every piece via `POST /commands/batch` (`{dryRun:true, stopOnError:false,
+commands:[{type:"build-road", ...}]}`, chunked to the bridge's limit of 32 commands per call) and
+return `waterCheck:{pieces, dryRunOk, dryRunFailed, onWater, firstFailures}`; a dry run that
+refuses any piece ends the call with `ok:false` and nothing built, (4) on a real call, POST the
+chunks in order with `stopOnError:true`; on any failed item report `built:{count, ids (first 20),
+known}`, `failedIndex`, `error`, `notBuilt` and a `repair` line, never retrying silently. If a
+batch CALL itself throws, the bridge may have built part of that chunk (it executes
+sequentially), so `built.known` is false and `repair` says to read the networks and anomalies
+inside `footprint` before touching anything. (5) After a real run, read `/state/road-anomalies`
+(limit 500, `includeDeadEnds=false`), filter to the rotated footprint bbox, and report
+`anomaliesInFootprint`. Advisories are grouped per rule (`{rule, count, first}`) so a
+roundabout's twelve 23 m pieces are one A-SHORT line. Measured on the mock: `t-junction` dry
+run 261 chars; every shipped template dry run 290-484 chars (~75-120 tokens); a HARD-blocked
+40-piece cloverleaf in water 651 chars. Cap 3000 chars via the same drop-then-trim rule as the
+other tools (`dryRunItems`, `advisory`, `waterCheck`, `footprint` dropped first).
+
+Template file shape and the rule that every prefab name must appear verbatim somewhere in
+`docs/api.md`, `lessons.md`, `knowledge.md`, `transit.md` or a `*-master-plan.md`/`cities/**`
+file are documented in `templates/layouts/README.md`, which also lists every template, its
+footprint, and what it is for. As of 2026-10-01, no confirmed `Highway Elevated` or
+`Highway Ramp Elevated` prefab name exists anywhere in this repo: the highway x arterial
+interchange templates (`diamond`, `parclo`, `cloverleaf`) elevate the crossing arterial
+(`Medium Road Elevated`, confirmed) instead, and put nonzero `elevation` on ordinary ground-prefab
+`Highway Ramp` nodes for the ramps, matching the Portville IC precedent (`cities/portville/`
+lessons, 2026-09-27: a ground prefab with node elevation does not raise the terrain sample).
+`templates/layouts/validate.py` is a pure-Python, pure-offline checker (schema, segment length
+<= 100 m, node separation, grade <= 8%, role defaults); all 9 shipped templates pass it, but every
+`geometryStatus` stays `"UNVERIFIED IN GAME"` until a live `dryRun:true` stamp confirms it.
+
+### cs1_city_context, per-city context dirs, and the session city guard
+
+`cs1_city_context {}` calls `GET /health`, reads `.city` (`null` if no level is loaded), and
+resolves a context directory via `resolveCityDir` (`mcp-server/src/cityContext.ts`): a
+`cities/<slug>/city.md` whose header `id:` matches the loaded city's id wins; else a dir with
+an EXPLICIT `id: unknown` line and a case-insensitive matching `name:` is bound in place (its
+header is rewritten: `id:` set to the real id, `bindOnLoad: false`; the rewrite is read back and
+`bound:false` plus `bindNote` is returned if it did not stick). A city.md with no `id:` line is
+never bound (it could not be rewritten and would silently absorb a city). Two or more dirs that
+both match by name are ambiguous: nothing is bound, `dir` is null and `resolveNote` names them so
+the player sets the id by hand. Calling this tool **declares the session city id**
+in module state. Response: `{city, dir, exists, bound, files:{cityMd,progressMd,planMd,
+lessonsMd}, cache:[...] (max 20, with cacheTruncated), sessionCityId, note?}`. Cap 2000 chars
+(falls back to 5 cache entries if the full list would exceed it). Measured on the mock plus a temp
+fixture dir with only `city.md`/`progress.md`: 448 chars (~112 tokens).
+
+Every mutation tool (`build_*`, `connect`, `set_zone`, `repair_*`, `place_building`,
+`move_building`, `bulldoze`, `unlock_area`, `transit_line_*`, `set_policy`,
+`set_service_budget`, `set_tax_rate`, `set_simulation_speed`, `stamp_layout`, `save`) runs one
+shared guard (`guardSessionCity`, `src/cityContext.ts`, used by `commands.ts` and `transit.ts`,
+not copy-pasted) before every call: GET `/health`; `city` null -> error "no city loaded"; a
+session id already declared and it differs -> error "loaded city `<name>` (`<id>`) differs from
+the session city `<id>`: stop, re-read context (`cs1_city_context`)" and the bridge is never
+called, no opt-out; nothing declared yet -> auto-declares and the response gains `city:{id,name}`
+and a note. One extra GET per mutation; no measurable token cost beyond the small `city`/`note`
+fields on the first call.
+
+`cities/<slug>/` holds `city.md`, `progress.md`, `plan.md`, `lessons.md` (city-specific only;
+global Proven Rules stay in the root `lessons.md`) and `cache/` (terrain-map and route-share
+snapshots, wrapped as `{capturedAt:{gameDate,population,wallClock}, payload}`). Slug = the city
+name lower-cased with runs of non-`[a-z0-9]` collapsed to `-`, plus `-` and the id's first 8 chars
+once the id is known. `cities/README.md` is the full layout/slug/bind/stub reference;
+`templates/city/` holds the five starter files for a new city. `cs1_master_plan` now resolves the
+loaded city's `cities/<slug>/plan.md` first (via the same `resolveCityDir`), falling back to
+`CS1_MASTER_PLAN` / the legacy default; its response `source` field says which file was read.
+
+### Bench scripts (no MCP tool; shell + Node)
+
+`scripts/bench-run.sh <scenario>` copies a named save from `bench/manifest.json` to
+`bench-<scenario>-<ts>.crp` (refuses if that name exists), restarts the game, and runs
+`scripts/bench-score.mjs`, which reads `/health`, `/state/summary`, `/state/transit`,
+`/state/economy`, `/state/problems`, `/state/traffic`, checks the loaded city's name/population
+against the manifest (and, once a `cityDir` is set, its `id:` against the bound directory) before
+scoring, then unpauses, waits `settleDays`, samples, and writes
+`<cityDir>/cache/bench/<scenario>-<ts>.json` (or `bench/results/` with no `cityDir`). `--compare`
+reports a `signal:true` delta only when it exceeds both the baseline's sample spread and 2x its
+stddev. `cashBalance` is read from `/state/areas` `cash`, not `/state/economy` (which carries tax
+rates only, no cash field) - a documented deviation from the literal spec endpoint list; see
+`bench/README.md`. Pure scoring (`bench/lib/score.mjs`) is unit-tested in `bench/test/score.test.mjs`
+(`node --test`, 10/10 passing as of 2026-10-01); no live run against the bridge has happened this
+wave. Never run on a user's save - it always copies first.
 
 ## In-game chat
 

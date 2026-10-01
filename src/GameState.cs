@@ -16,6 +16,7 @@ namespace SkylinesAgentBridge
             StringBuilder json = new StringBuilder();
             json.Append("{\"ok\":true");
             json.Append(",\"gameTime\":\"").Append(JsonUtil.Escape(simulation.m_currentGameTime.ToString("s"))).Append("\"");
+            json.Append(",\"city\":").Append(CityIdentity.BuildCityJson());
             json.Append(",\"buildIndex\":").Append(simulation.m_currentBuildIndex);
             json.Append(",\"simulation\":{\"paused\":").Append(JsonUtil.Bool(simulation.SimulationPaused));
             json.Append(",\"selectedSpeed\":").Append(simulation.SelectedSimulationSpeed);

@@ -39,6 +39,7 @@ namespace SkylinesAgentBridge
                 return CommandResult.Fail("SavePanel rejected the save request.");
             }
 
+            CityIdentity.RememberSave(name);
             Debug.Log("[SkylinesAgentBridge] Requested package save: " + name + " -> " + path);
             return CommandResult.FromJson("{\"ok\":true,\"saveName\":\"" + JsonUtil.Escape(name) +
                 "\",\"path\":\"" + JsonUtil.Escape(path) +
