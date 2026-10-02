@@ -71,6 +71,9 @@ function segments(count) {
 }
 
 /** Mutable so tests can flip the loaded city / unload it without restarting the mock. */
+/** Mutable /prefabs/buildings state: `extra` rows are appended; `failNext` answers that many reads with 500. */
+export const mockPrefabs = { extra: [], failNext: 0 };
+
 export const mockCity = {
   current: { id: "abc12345", name: "Mockville", map: "Tropical", environment: "Tropical", gameDate: "2026-10-01", population: 4211, lastSaveName: "AgentAutoSave" },
 };
@@ -144,6 +147,14 @@ const ROUTES = {
     roads: [
       { name: "Basic Road", displayName: "Two-Lane Road" },
       { name: "Medium Road", displayName: "Four-Lane Road" },
+    ],
+  }),
+  "/prefabs/buildings": () => ({
+    ok: true,
+    buildings: [
+      { name: "Fire House", displayName: "Fire House", service: "FireDepartment", width: 4, length: 4, placementMode: "Roadside" },
+      { name: "Harbor", displayName: "Harbor", service: "PublicTransport", width: 12, length: 12, placementMode: "Shoreline" },
+      ...mockPrefabs.extra,
     ],
   }),
   "/state/terrain": (url) => {
@@ -425,6 +436,13 @@ export function startMockBridge(port = 0) {
           : { ok: true, entries, latestId, returned: entries.length };
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(body));
+      return;
+    }
+
+    if (path === "/prefabs/buildings" && mockPrefabs.failNext > 0) {
+      mockPrefabs.failNext--;
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "mock prefab read failure" }));
       return;
     }
 

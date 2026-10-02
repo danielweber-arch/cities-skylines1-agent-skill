@@ -16,3 +16,6 @@ tmp/parameter-logs/
 tmp/review/
 mcp-server/node_modules/
 mcp-server/dist/
+
+# Self-referencing symlink at the repo root (see TODOS.md)
+/cities-skylines1-agent-skill

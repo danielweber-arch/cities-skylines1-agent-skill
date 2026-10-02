@@ -16,6 +16,9 @@ export type PlanBuilding = {
   angleDegrees?: number;
   widthCells?: number;
   lengthCells?: number;
+  /** Shoreline / ShorelineOrGround / OnWater prefabs (harbors, dams, offshore turbines) stand in
+   * water by design; H-WATER skips them, matching the bridge's WaterGuard exemption. */
+  waterExempt?: boolean;
 };
 
 export type NoBuildArea = {
@@ -564,7 +567,7 @@ export async function checkPlan(
 
     for (const p of points) {
       pointsChecked++;
-      waterCheckPoints.push({ p, label: `building "${buildingLabel}"` });
+      if (!building.waterExempt) waterCheckPoints.push({ p, label: `building "${buildingLabel}"` });
       checkNoBuild(p, "H-NOBUILD", `Building "${buildingLabel}" point (${p.x},${p.z})`);
     }
   }

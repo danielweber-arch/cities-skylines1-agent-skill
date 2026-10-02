@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { startMockBridge, mockCity } from "./mock-bridge.js";
+import { startMockBridge, mockCity, mockPrefabs } from "./mock-bridge.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const entry = resolve(here, "../src/index.ts");
@@ -246,5 +246,89 @@ test("cs1_check_plan runs the checker directly without touching the bridge", asy
       requests.slice(before).every((r) => !r.url.startsWith("/commands/")),
       "cs1_check_plan must never call a mutation endpoint",
     );
+  });
+});
+
+test("cs1_place_building checks the prefab footprint: a corner over water blocks, the bridge is never called", async () => {
+  await withServer(async (client, requests) => {
+    const before = requests.length;
+    // Centre x 590 is dry; Fire House is 4x4 cells (32 m), so the east corners sit at x 606 (water).
+    const result = await client.callTool({
+      name: "cs1_place_building",
+      arguments: { buildingPrefab: "Fire House", position: { x: 590, z: 0 }, dryRun: true },
+    });
+    assert.equal(result.isError, true);
+    assert.match(textOf(result), /^ERROR: plan check blocked:.*H-WATER/s);
+    assert.ok(requests.slice(before).every((r) => r.url !== "/commands/place-building"));
+  });
+});
+
+test("cs1_place_building: a Shoreline prefab (Harbor) centred over water is not blocked by H-WATER", async () => {
+  await withServer(async (client, requests) => {
+    const result = await client.callTool({
+      name: "cs1_place_building",
+      arguments: { buildingPrefab: "Harbor", position: { x: 650, z: 0 }, dryRun: true },
+    });
+    assert.notEqual(result.isError, true, textOf(result));
+    const posted = requests.filter((r) => r.url === "/commands/place-building");
+    assert.equal(posted.length, 1);
+  });
+});
+
+test("cs1_place_building: widthCells/lengthCells override the lookup and are not sent to the bridge", async () => {
+  await withServer(async (client, requests) => {
+    // Unknown prefab (no lookup size): position-only would pass at x 580; a 6-cell (48 m) override reaches x 604.
+    const blocked = await client.callTool({
+      name: "cs1_place_building",
+      arguments: { buildingPrefab: "Custom Asset", position: { x: 580, z: 0 }, widthCells: 6, lengthCells: 6, dryRun: true },
+    });
+    assert.equal(blocked.isError, true);
+    assert.match(textOf(blocked), /H-WATER/);
+    const ok = await client.callTool({
+      name: "cs1_place_building",
+      arguments: { buildingPrefab: "Custom Asset", position: { x: 500, z: 0 }, widthCells: 2, lengthCells: 2, dryRun: true },
+    });
+    assert.notEqual(ok.isError, true, textOf(ok));
+    const posted = requests.filter((r) => r.url === "/commands/place-building");
+    assert.equal(posted.length, 1);
+    const body = posted[0].body ?? {};
+    assert.equal(body.widthCells, undefined);
+    assert.equal(body.lengthCells, undefined);
+  });
+});
+
+test("cs1_place_building: a failed prefab refresh does not poison the name for later lookups", async () => {
+  mockPrefabs.extra = [];
+  mockPrefabs.failNext = 0;
+  try {
+    await withServer(async (client, requests) => {
+      // Warm the cache with a list that lacks "Late Harbor".
+      await client.callTool({ name: "cs1_place_building", arguments: { buildingPrefab: "Fire House", position: { x: 0, z: 0 }, dryRun: true } });
+      // The one-shot refresh for the missing name fails; centred over water, it is blocked (not exempt).
+      mockPrefabs.failNext = 1;
+      const first = await client.callTool({ name: "cs1_place_building", arguments: { buildingPrefab: "Late Harbor", position: { x: 650, z: 0 }, dryRun: true } });
+      assert.equal(first.isError, true);
+      // The asset is now listed as Shoreline: the next call must refresh and let it through.
+      mockPrefabs.extra = [{ name: "Late Harbor", width: 12, length: 12, placementMode: "Shoreline" }];
+      const second = await client.callTool({ name: "cs1_place_building", arguments: { buildingPrefab: "Late Harbor", position: { x: 650, z: 0 }, dryRun: true } });
+      assert.notEqual(second.isError, true, textOf(second));
+      assert.ok(requests.some((r) => r.url === "/commands/place-building" && r.body?.buildingPrefab === "Late Harbor"));
+    });
+  } finally {
+    mockPrefabs.extra = [];
+    mockPrefabs.failNext = 0;
+  }
+});
+
+test("cs1_place_building: an override smaller than the listed prefab does not shrink the checked footprint", async () => {
+  await withServer(async (client, requests) => {
+    // Fire House is listed 4x4 (32 m); a 1x1 override would keep x 590 +/- 4 dry, the real lot reaches x 606.
+    const result = await client.callTool({
+      name: "cs1_place_building",
+      arguments: { buildingPrefab: "Fire House", position: { x: 590, z: 0 }, widthCells: 1, lengthCells: 1, dryRun: true },
+    });
+    assert.equal(result.isError, true);
+    assert.match(textOf(result), /H-WATER/);
+    assert.ok(requests.every((r) => r.url !== "/commands/place-building"));
   });
 });

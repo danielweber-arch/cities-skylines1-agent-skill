@@ -94,13 +94,17 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
    * every mutation tool (wave2-spec.md section 3 and section 8). `planBuilder` converts the
    * tool's args into a checker Plan; when it returns a HARD verdict the bridge is never called.
    */
-  const run = async (path: string, body: Record<string, unknown>, planBuilder?: (body: Record<string, unknown>) => Plan | null) => {
+  const run = async (
+    path: string,
+    body: Record<string, unknown>,
+    planBuilder?: (body: Record<string, unknown>) => Plan | null | Promise<Plan | null>,
+  ) => {
     try {
       const guard = await guardSessionCity(bridge);
 
       let planCheckAttach: Record<string, unknown> | undefined;
       if (planBuilder) {
-        const plan = planBuilder(body);
+        const plan = await planBuilder(body);
         if (plan) {
           const check = await enforcePlan(plan, bridge);
           if (check.verdict === "blocked") {
@@ -190,15 +194,64 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
     return { roads: [{ prefab: roadPrefab, points: [start, end] }] };
   };
 
-  const placeBuildingPlan = (body: Record<string, unknown>): Plan | null => {
+  // Prefab footprint (8 m cells) and placement mode from GET /prefabs/buildings, cached for the
+  // process. A name missing from the cache triggers one successful refresh; a failed read leaves the
+  // check without a looked-up size or exemption (caller overrides still apply).
+  type PrefabInfo = { width: number; length: number; placementMode: string };
+  let prefabCache: Map<string, PrefabInfo> | null = null;
+  const refreshedFor = new Set<string>();
+  const lookupPrefab = async (name: string): Promise<PrefabInfo | undefined> => {
+    const load = async () => {
+      const res = (await bridge.get("/prefabs/buildings")) as { buildings?: Array<Record<string, unknown>> };
+      // A body without the list is a failed read, not an empty catalogue.
+      if (!Array.isArray(res?.buildings)) throw new Error("prefab list missing from /prefabs/buildings");
+      const map = new Map<string, PrefabInfo>();
+      for (const b of res.buildings) {
+        if (typeof b.name !== "string") continue;
+        map.set(b.name, {
+          width: Number(b.width ?? 0),
+          length: Number(b.length ?? 0),
+          placementMode: String(b.placementMode ?? ""),
+        });
+      }
+      prefabCache = map;
+    };
+    try {
+      if (!prefabCache) await load();
+      if (!prefabCache!.has(name) && !refreshedFor.has(name)) {
+        await load();
+        // Mark only after a successful read, so a failed refresh cannot poison the name.
+        refreshedFor.add(name);
+      }
+      return prefabCache!.get(name);
+    } catch {
+      return undefined;
+    }
+  };
+  const WATER_PLACEMENT_MODES = new Set(["Shoreline", "ShorelineOrGround", "OnWater"]);
+
+  const placeBuildingPlan = async (
+    body: Record<string, unknown>,
+    size: { widthCells?: number; lengthCells?: number },
+  ): Promise<Plan | null> => {
     const position = body.position as { x: number; z: number } | undefined;
     if (!position) return null;
+    const prefab = String(body.buildingPrefab ?? "");
+    const info = await lookupPrefab(prefab);
+    // An override can only enlarge the checked footprint: the bridge always places the real prefab.
+    const pick = (override: number | undefined, known: number | undefined) =>
+      override === undefined ? known : known === undefined ? override : Math.max(override, known);
+    const widthCells = pick(size.widthCells, info && info.width > 0 ? info.width : undefined);
+    const lengthCells = pick(size.lengthCells, info && info.length > 0 ? info.length : undefined);
     return {
       buildings: [
         {
-          prefab: String(body.buildingPrefab ?? ""),
+          prefab,
           position,
           angleDegrees: body.angleDegrees as number | undefined,
+          widthCells,
+          lengthCells,
+          waterExempt: info ? WATER_PLACEMENT_MODES.has(info.placementMode) : false,
         },
       ],
     };
@@ -397,7 +450,9 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         "cs1_connect on the same position when it needs road access." +
         WATER_GUARD_NOTE +
         " Exempt: buildings with placement mode Shoreline, ShorelineOrGround, or OnWater " +
-        "(harbors, dams, offshore turbines), which keep the existing validate path.",
+        "(harbors, dams, offshore turbines), which keep the existing validate path. The inline " +
+        "plan check tests the centre and the four footprint corners (size from " +
+        "cs1_prefabs_buildings unless widthCells/lengthCells are given) against water and no-build areas.",
       inputSchema: {
         buildingPrefab: z.string().describe("Exact name from cs1_prefabs_buildings."),
         position: point,
@@ -405,10 +460,13 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         validate: z.boolean().optional().describe("Run the in-game placement and collision checks."),
         elevation: z.number().optional().describe("Elevation step used by validated placement."),
         ignoreUnlock: z.boolean().optional().describe("Bypass the prefab milestone gate for an intentional test."),
+        widthCells: z.number().int().min(1).optional().describe("Footprint override, 8 m cells, for assets the prefab list lacks. Never shrinks below the listed width."),
+        lengthCells: z.number().int().min(1).optional().describe("Footprint override, 8 m cells, for assets the prefab list lacks. Never shrinks below the listed length."),
         dryRun,
       },
     },
-    async (args) => run("/commands/place-building", args, placeBuildingPlan),
+    async ({ widthCells, lengthCells, ...args }) =>
+      run("/commands/place-building", args, (body) => placeBuildingPlan(body, { widthCells, lengthCells })),
   );
 
   server.registerTool(
