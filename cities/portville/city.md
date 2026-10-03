@@ -18,10 +18,11 @@ Map: new map, highways + mainline only | Save file: Portville | Started: 2026-09
 
 ### Central Park [player directive 2026-09-29]
 Preserve and expand it. Inside its boundary every zone cell stays `Unzoned`: no R, C, I or Office, from any command, stager, repair tool or the chat assistant. No roads through it, no demolition of its park buildings, metro only underneath, no polluter within 300 m. Full rules and the expansion steps: `plan-phase4.md` §1 (moved from `portville-phase4-plan.md`, 2026-10-01).
-- Boundary: NOT YET RECORDED. Phase 4 step CP0 records it here (polygon corners, edge segment ids, park building ids) before any other Phase 4 command.
+- Boundary (v2, set by the orchestrator 2026-10-03 under player chat #9 "you decide the area and you build"; verified empty of buildings/roads, terrain median 131 m): polygon (x,z) (-3700,-700) (-3610,-740) (-3560,-930) (-3470,-1060) (-3250,-1060) (-3250,-1300) (-3800,-1300) (-4000,-1010); about 0.26 km2, river shore on its west edge (existing City Quay segs 1131 10675 24528 8547). Open and unzoned: NO zoning of any kind inside. Incineration Plant 27005 (-3300,-750) is 302-316 m from the nearest corners (buffer 300 m); keep it, never add polluters nearer. The earlier "Central Park" district 124 of the old save has unrecorded bounds; the player's order replaces it with this polygon.
+- Design: tmp/portville/centralpark/design-2026-10-03.md. Great Lawn about 170 x 120 m around (-3600,-1060).
 <!-- Machine-readable placeholder, per wave2-spec.md section 4 city.md syntax. Do NOT uncomment
      with a fake number: CP0 must measure the real boundary first.
-- NO-BUILD Central Park: bbox <minX>,<minZ> <maxX>,<maxZ>
+- NO-BUILD Central Park: bbox -4000,-1300 -3250,-700
 -->
 
 ## Research summary
@@ -181,3 +182,15 @@ Preserve and expand it. Inside its boundary every zone cell stays `Unzoned`: no 
   - Industry moves to E1; D2 cells corrected.
   - NE tile to be bought first.
   - Couplet observed converted to Large Oneway boulevards by the player (14:07–14:17).
+
+## Standing orders
+- 2026-10-03 (player prompt): take over Portville and bring it to 100,000 population. Orchestrator (this session) plans and verifies; Sonnet subagents do the in-game work. Keep the in-game chat informed (cs1_chat / POST /chat/say) and poll the inbox before every mutation batch. The player cannot reply while the game is open: decide safe defaults, log them here, never block.
+- Central Park stays Unzoned (see Protected areas). Only entities created by this run are bulldozed, except abandoned/burned/collapsed wrecks and flood repairs, which are logged by id.
+- SUPERSEDED 2026-10-03 17:17 by player chat #5: the only working save is `Portville`; overwrite it after each verified step. NEVER create another save name. (A stray `Portville-100k.crp` was written 17:16:45, 13 s before that order; leave it, do not reuse it.)
+- Loaded state at run start (2049-10-13): pop 51,907, cash unlimited, 11/11 tiles owned (atMax), sim paused, 454 problems (about 161 flood), demand R24 C33 W66.
+- 2026-10-03 17:12 (player chat #3): fix traffic congestion bottlenecks, resume the transportation master plan, fix flooding.
+- 2026-10-03 17:16 (player chat #4): Claude is in full control; grow the city according to the master plan.
+- 2026-10-03 17:16 (player chat #5): do not make a new save; only work in Portville and overwrite that save.
+- Channel: the player talks to me through the in-game chat only while the game is open. Poll `/chat/inbox` before every mutation batch.
+- 2026-10-03 17:51 (player chat #14): "you have autonomy over the game. if you need a building demolished, do so." Demolition of buildings that a build genuinely needs is authorised; keep it to what the work needs, log every id, never touch Central Park contents or occupied homes without need.
+- Amendment 2026-10-03: the Avoid rule "jobs zoned ahead of homes" is waived for NE1: decompiled demand code shows unemployment (jobs shortage) is what suppresses residential demand and immigration, so NE1 is job-heavy by design (Office 37.5%, CommercialHigh 25%, ResidentialHigh 37.5% of 64 blocks; zone plan tmp/portville/zoning/ne1-zoning-plan.json).
