@@ -1150,3 +1150,9 @@ Player message #7: focus interconnectivity between attractions, industry, travel
 - Saved checkpoint `Portville-Interconnectivity-2045.crp` (14,434,670 bytes, written 2026-09-29 01:39Z). The original `Portville.crp` remains present.
 
 Open: the 100-density Holmes/Stephen Harris and Riverside East approaches still need a locally validated access fix; city flow remains below the 75% target. Recheck traffic after the higher feeder frequency runs for several in-game periods.
+
+## 2026-10-03 Run start (orchestrator, 100k goal) - flood wreck cleanup (Sonnet worker, verified by orchestrator)
+Loaded: pop 51,907 (2049-10-13), cash unlimited, 11/11 tiles, sim was paused. 6 game days at speed 3: pop 51,907 -> 51,978, R demand ~25 flat: the city is stalled, not land-limited (13.7 km2 dry flat free per land survey; ~24,800 RH cells zoned vs 1,206 RH buildings).
+Player chat: #3 fix traffic bottlenecks, resume transport master plan, fix flooding; #4 full control, grow per master plan; #5 never create a new save, overwrite `Portville`. (A stray `Portville-100k.crp` was written 17:16:45 before #5.)
+West bank (x -3700..-2600, z -650..320): 37 wrecks bulldozed (19 BurnedDown+Collapsed+Flooded+StructureDamaged, 14 Abandoned+Flood, 4 Abandoned+BurnedDown+Collapsed+StructureDamaged); ids in scratchpad flood_cleanup_ids.json. 12 unzone circles (r 24, preserveOccupied) applied; 16 skipped (would touch occupied blocks). Problems 386 -> 349 (re-verified: 349; none of the 37 ids remain).
+Left alone: 16 flooded but occupied buildings: 912 2115 2381 9087 9734 20294 21012 21476 23588 26797 31137 34223 35642 39114 39884 43746.
