@@ -628,3 +628,78 @@ this wave reads `DistrictManager.m_districtGrid`.
 
 - [ ] **Central Park v2 leftovers (2026-10-03):** Expensive Park (13x12 cells) and Botanical garden (11x8) have no clean slot in the new layout; Floating Cafe 36680 and Fishing Island 36425 on the shore (x about -4000) have no road or utility (Electricity, Water, RoadNotConnected). Birthday Plaza 7799 Water flag not re-verified after its pipe. Fix: a short shore road/spur with pipes and poles at (-3990..-4000,-1000), or remove the two shore items.
 - [ ] **Bridge: parks/plazas are invisible to /state/growables and /state/facilities** (found 2026-10-03; Beautification buildings only show in /state/problems when flagged). Existence checks need a validated place-building dry run at the same spot (collidingBuildingIds). Add a service=Beautification listing.
+
+## Fair play (2026-10-17)
+
+Owner order: "do not cheat the game or include any mods. play fair and honest." Audit of every mutating command against the game's own tools (NetTool, BuildingTool, BulldozeTool read with monodis from Assembly-CSharp.dll). New gate file `src/FairPlay.cs`; bypass flags are refused with "fair play: <flag> is disabled" unless `CS1_ALLOW_CHEATS=1` is in the game's environment (read once). Nothing below was tested in a live game.
+
+- [x] **Roads/networks were free.** `NodeHelper.CreateSegment` (src/NodeHelper.cs) called `NetManager.CreateSegment` with no charge; NetTool charges `NetAI.GetConstructionCost(start,end,h1,h2)` via `EconomyManager.FetchResource(Construction)` after `PeekResource`. Affected build-road, build-network, build-grid, build-neighborhood, connect, batch build-road. Fix: CreateSegment now peeks and refuses "not enough money" (src/NodeHelper.cs:240-244), charges after create (:299); `Rollback` refunds the charge of every segment it releases (:371-377). Cost priced like BulldozeTool.GetSegmentRefundAmount (node m_elevation, negated underground). build-road dry run reports `estimatedCost` and refuses when unaffordable (src/RoadCommands.cs:89-93). fixed, uncommitted
+- [x] **Locked road/rail/path prefabs were buildable.** No `GetUnlockMilestone` check on networks. Fix: src/RoadCommands.cs:32 and src/NodeHelper.cs:230 (covers composites). fixed, uncommitted
+- [x] **Roads and buildings could be built on unbought tiles.** NetTool/BuildingTool refuse with OutOfArea (`GameAreaManager.QuadOutOfArea`); the bridge never checked. Fix: 8 m samples along each segment (src/NodeHelper.cs:234, src/RoadCommands.cs:85) and footprint centre+corners for place/move/validated place (src/BuildingCommands.cs:92, :194, :641). Approximation of QuadOutOfArea, not the exact quad. fixed, uncommitted
+- [x] **place-building was free** (both the plain path and the validated path, which computed `constructionCost` from CheckBuildPosition but never charged it). BuildingTool.CreateBuilding does `FetchResource(Construction, m_constructionCost, class)` after a PeekResource test. Fix: plain path charges `BuildingAI.GetConstructionCost()` (src/BuildingCommands.cs:96-99, :132); validated path charges the CheckBuildPosition cost (:645, :707). fixed, uncommitted
+- [x] **place-building `ignoreUnlock`** bypassed the milestone gate. Refused (src/BuildingCommands.cs:39). `validate:false` on Shoreline/OnWater buildings (skips the game's placement checks) refused (:56). fixed, uncommitted
+- [x] **move-building was free and could move any building** (growables, non-player buildings). Game relocation costs `BuildingAI.GetRelocationCost()` and the Move button is for player buildings. Fix: refuse non-PlayerBuildingAI (src/BuildingCommands.cs:174), charge relocation cost (:198-201, :231). fixed, uncommitted
+- [x] **unlock-area `ignoreMaxAreaCount` / `ignoreMilestoneLimit`** raised the tile cap from 9 to 25 (a mod feature). Refused (src/AreaCommands.cs:115). Milestone gate and land price were already correct. fixed, uncommitted
+- [x] **transit-line-create `ignoreUnlock`** created lines for locked transport types. Refused (src/TransitCommands.cs:39). TransportTool has no construction charge, so lines stay free like the game. fixed, uncommitted
+- [x] **build-road `allowRoadOverlap`** built a surface path onto a road, which the game refuses as a collision. Refused (src/RoadCommands.cs:16). fixed, uncommitted
+- [x] **set-zone painted locked zones** (Office, high density before their milestones). Fix: `UnlockManager.Unlocked(zone)` check (src/ZoneCommands.cs:25). fixed, uncommitted
+- [x] **MCP offered the bypass flags.** Removed `allowRoadOverlap` (cs1_build_network), `ignoreUnlock` (cs1_place_building, cs1_transit_line_create), `ignoreMaxAreaCount` (cs1_unlock_area) from mcp-server/src/tools/commands.ts and transit.ts; test mcp.test.js "fair play: bypass flags are not offered..." asserts no tool offers them and none reaches the bridge. fixed, uncommitted
+- [ ] **place-building plain path skips the game's placement/collision checks** for ground buildings (validate defaults false unless Shoreline/OnWater, src/BuildingCommands.cs:55). BuildingTool always runs CheckBuildPosition + CheckSpace. Fix: default validate:true for every building once tested live (the validated path also charges the exact tool cost, which includes building paths; the plain path charges only GetConstructionCost()).
+- [ ] **Composite dry runs (build-grid, build-neighborhood, connect) do not report or pre-check total cost**; they fail mid-build on money and roll back with refunds. Fix: sum SegmentCost over the planned segments in dry run.
+- [ ] **bulldoze gives no refund** (src/BulldozeCommands.cs:51, :91). BulldozeTool refunds `GetRefundAmount` for buildings and 3/4 of segment cost (via EconomyWrapper) only while `SimulationManager.IsRecentBuildIndex`. Not an advantage (the agent loses money), but not like the game. Fix: mirror GetBuildingRefundAmount/GetSegmentRefundAmount with AddResource(RefundAmount).
+- [ ] **set-tax-rate allows 0..29** (src/EconomyCommands.cs:113) and **set-service-budget allows 0..150** (src/TransitCommands.cs:540); the game's sliders are believed to be 1..29 (tax) and 50..150 (budget), set in UI prefabs not code, so not confirmed from the assembly. A budget below 50 saves money a human cannot. Verify the slider minimums live, then clamp.
+- [ ] **allowWater** (build-road, place/move-building, composites) relaxes only the bridge's own water guard, not a game rule; left as is (already not offered by the MCP). Revisit if the game's own tool refuses those placements.
+
+## Game lifecycle routes (2026-10-17, uncommitted): /state/maps, /commands/new-game, /commands/load-save, /health enabledMods
+
+Compiled against the installed Assembly-CSharp. The game was not running, so none of this has
+been seen working. Docs: `docs/api.md` "## Game lifecycle".
+
+- [ ] **Live verification owed.** At the main menu: `GET /state/maps` count and names against the
+  New Game panel list; `POST /commands/new-game` dryRun and then a real start reaching
+  `levelLoaded:true`; `POST /commands/load-save` from the menu and from in game; `/health`
+  `enabledMods` with and without a built-in cheat mod enabled. Also check that
+  `MainThreadDispatcher` (`src/MainThreadDispatcher.cs`) really ticks at the menu and keeps
+  ticking after a level load and a quit to menu. It is a DontDestroyOnLoad GameObject created
+  in `IUserMod.OnEnabled`, and whether OnEnabled runs before or after the first scene change at
+  startup is unverified.
+- [ ] **The disasters first-run modal is bypassed.** `NewGamePanel.CheckForDisasterActivation`
+  and `LoadPanel.CheckForDisasterActivation` show `TEXTFORRANDOMDISASTERS` once
+  (`Settings.hasSetDisastersOnOff` false, Natural Disasters owned). The bridge skips that modal
+  and leaves the setting untouched (`src/LifecycleCommands.cs` NewGame/LoadSave). Impact: on a
+  fresh install with Natural Disasters, the random-disasters choice is never made explicitly.
+  Fix if it matters: read the modal's `<>m__0` callback IL and copy what it writes.
+- [ ] **`/health` `enabledMods` walks `PluginManager` off the main thread**
+  (`src/ApiServer.cs:209`, `src/LifecycleCommands.cs:61`). The read is guarded by try/catch and
+  returns `null` on failure, but it can race a Content Manager toggle. Fix if it races: cache
+  the list on the main thread from `MainThreadDispatcher.Update` and serve the cached copy.
+- [ ] **`JsonUtil.GetString` truncates at the first escaped quote** (`src/JsonUtil.cs:48`, regex
+  `"([^"]*)"`). Every route is affected. A city name or save name containing `"` reaches the game
+  cut short. The MCP `cs1_new_game` now rejects quotes and backslashes in `cityName`, but raw HTTP
+  callers are not protected. Fix: write a real JSON string scanner that handles `\"`, `\\` and `\uXXXX`.
+- [ ] **Saves outside the PackageManager cannot be loaded by name.** `LoadPanel.Refresh` also
+  lists `SaveHelper.GetSavesOnDisk()`; `LifecycleCommands.EnumerateSaves` does not. Impact: a
+  `.crp` that shows in `GET /state/saves` but that the PackageManager has not indexed fails
+  load-save with "No save named ...". Fix: copy that second pass once its IL has been read.
+- [ ] **Lifecycle errors that are really exceptions also return 409**
+  (`src/ApiServer.cs` `RunOnMainThread`). A supervisor cannot tell "refused, retry later" from "threw".
+  Fix: mark refusals separately in `CommandResult` and return 500 on an exception.
+- [ ] **Out of scope, seen during this work:** `mcp-server/test/mcp.test.js:153` "fair play:
+  bypass flags are not offered and never reach the bridge" fails on 2026-10-17. `cs1_build_network`
+  forwards `Pedestrian Pavement` with no refusal. That file and the tool are owned by the
+  concurrent fair-play change, so this is probably in-progress work, not a regression from the
+  lifecycle routes.
+
+## Autopilot loop (2026-10-17, uncommitted)
+
+`scripts/autopilot.sh` + `scripts/install-autopilot-agent.sh` (launchd `com.skylines-agent-bridge.autopilot`, caffeinate -ims), `scripts/autopilot-save.sh`, `scripts/prompts/autopilot-*.md`, design `docs/autopilot.md`. City `cities/claude-1-8bace5ee/` (Islands; the game named it "Westwood"; save `Claude 1.crp`).
+
+- [ ] **new-game ignores cityName.** `POST /commands/new-game {cityName:"Claude 1"}` returned ok but the loaded city is named "Westwood", and `/health` city.id (8bace5ee...) differs from the returned gameInstanceIdentifier (1d890076...). Something after `LoadLevel` overwrites `m_CityName`/`m_gameInstanceIdentifier` (likely the game's own new-game setup in `LoadingManager`/`SimulationManager` rerolls them). Fix: set the name after load (CityInfoPanel/`SimulationManager.m_metaData.m_CityName` on the sim thread) and report the real id. src/LifecycleCommands.cs.
+- [ ] **FairPlay fails open** when `EconomyManager`/`UnlockManager` are absent or throw (src/FairPlay.cs:51,61,87,111, codex 2026-10-17). Only reachable without a loaded level; make them fail closed.
+- [ ] **Orphan sub-buildings** on a failed validated place-building: the main building is released but earlier sub-buildings are not (src/BuildingCommands.cs ~682, codex 2026-10-17).
+- [ ] **Rollback refunds are best effort**: a throwing `Refund` is swallowed in `NodeHelper.Rollback` (~372).
+- [ ] **check_saves only reports** extra save files; it does not prevent them (game autosave off by default, verified no AutoSave key in gameSettings.cgs).
+- [ ] **load-save cheat refusal** now allows the owner-chosen built-in mods (Unlimited Money, Unlock All, Unlimited Soil) per the owner 2026-10-17; any other cheat mod still blocks crash recovery.
+- [x] Mayor permission boundary verified with the real CLI (2026-10-17): POST curl and ./scripts/* DENIED, mutating MCP tools not exposed, GET allowed. `Write(...)` allow rules are ignored by the CLI; switched to `Edit(...)`.
+- [x] bash 3.2: empty-array expansion under `set -u` (launch_game) and `case` inside `$( )` both broke; fixed.
+- [ ] **MCP/bridge improvement backlog from the Claude 1 run**: 21 items with evidence in `docs/mcp-improvements.md` (slow MCP start, strict MCP config, permission pitfalls, save-name lock, new-game name/id, quit-to-menu, plan checker parsing template comments, utility crossings, place-building validate default, set-zone spill, transit stop validation, a `cs1_access_check` tool for monument and industry access, H-ADJACENT residential/industry check, blank `/capture`, a `/state/kpis` endpoint).
