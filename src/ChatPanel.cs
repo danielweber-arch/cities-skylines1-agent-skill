@@ -8,7 +8,7 @@ using UnityEngine;
 namespace SkylinesAgentBridge
 {
     /// <summary>
-    /// The in-game Codex chat window. Game thread only. It never waits on ChatStore's lock:
+    /// The in-game Claude chat window. Game thread only. It never waits on ChatStore's lock:
     /// every read goes through TryEnter and simply tries again next frame if an HTTP thread
     /// happens to hold it.
     ///
@@ -242,7 +242,7 @@ namespace SkylinesAgentBridge
 
             titleLabel = panel.AddUIComponent(typeof(UILabel)) as UILabel;
             titleLabel.name = "SkylinesAgentBridgeChatTitle";
-            titleLabel.text = "Codex";
+            titleLabel.text = "Claude";
             titleLabel.textScale = 0.9f;
             titleLabel.textColor = TitleColor;
             titleLabel.autoSize = false;
@@ -259,7 +259,7 @@ namespace SkylinesAgentBridge
             };
 
             closeButton = CreateButton(panel, "SkylinesAgentBridgeChatClose", "X", 30f, 22f);
-            closeButton.tooltip = "Hide (Ctrl+Shift+C or the Codex button on the API console brings it back)";
+            closeButton.tooltip = "Hide (Ctrl+Shift+C or the Claude button on the API console brings it back)";
             closeButton.eventClick += delegate(UIComponent component, UIMouseEventParameter eventParam)
             {
                 Toggle();
@@ -327,7 +327,7 @@ namespace SkylinesAgentBridge
             input.submitOnFocusLost = true;
             // Required for a code-built field: without it UITextField ignores typing entirely.
             input.builtinKeyNavigation = true;
-            input.tooltip = "Type to Codex. Enter sends, Esc leaves the field. Use /model NAME to switch the chat model.";
+            input.tooltip = "Type to Claude. Enter sends, Esc leaves the field. Use /model NAME to switch the chat model.";
             input.eventKeyDown += delegate(UIComponent component, UIKeyEventParameter eventParam)
             {
                 if (eventParam.used)
@@ -495,17 +495,17 @@ namespace SkylinesAgentBridge
             }
             else if (entry.Kind == "update")
             {
-                prefix = "Codex (working)";
+                prefix = "Claude (working)";
                 color = UpdateColor;
             }
             else if (entry.Kind == "status")
             {
-                prefix = "Codex (status)";
+                prefix = "Claude (status)";
                 color = StatusKindColor;
             }
             else
             {
-                prefix = "Codex";
+                prefix = "Claude";
                 color = ReplyColor;
             }
 
@@ -618,7 +618,7 @@ namespace SkylinesAgentBridge
                 statusLabel.tooltip = line;
             }
 
-            string title = status.State == "offline" ? "Codex (AI offline)" : "Codex (AI online)";
+            string title = status.State == "offline" ? "Claude (AI offline)" : "Claude (AI online)";
             if (titleLabel != null && titleLabel.text != title)
             {
                 titleLabel.text = title;

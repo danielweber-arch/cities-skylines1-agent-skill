@@ -13,6 +13,11 @@ namespace SkylinesAgentBridge
         public static CommandResult BuildRoad(string body)
         {
             bool dryRun = JsonUtil.GetBool(body, "dryRun", false);
+            string refused = FairPlay.RefuseFlags(body, "allowRoadOverlap");
+            if (refused != null)
+            {
+                return CommandResult.Fail(refused);
+            }
             string prefabName = JsonUtil.GetString(body, "roadPrefab", "Basic Road");
             string name = JsonUtil.GetString(body, "name", "");
 
@@ -23,6 +28,10 @@ namespace SkylinesAgentBridge
             if (info == null)
             {
                 return CommandResult.Fail("Road prefab was not found: " + prefabName);
+            }
+            if (!FairPlay.PrefabUnlocked(info))
+            {
+                return CommandResult.Fail(FairPlay.LockedPrefab(info));
             }
 
             if ((end - start).sqrMagnitude < 16f)
@@ -73,9 +82,20 @@ namespace SkylinesAgentBridge
                 }
             }
 
+            if (FairPlay.LineOutOfArea(start, end))
+            {
+                return CommandResult.Fail(FairPlay.OutOfAreaMessage + ".");
+            }
+            int estimatedCost = FairPlay.SegmentCost(info, start, end, startElevation, endElevation);
+            if (!FairPlay.CanAfford(estimatedCost))
+            {
+                return CommandResult.Fail(FairPlay.NotEnoughMoney(estimatedCost) + "; nothing was built.");
+            }
+
             if (dryRun)
             {
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Build-road validation passed.\",\"roadPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"" +
+                    ",\"estimatedCost\":" + estimatedCost +
                     ",\"startY\":" + JsonUtil.Number(start.y) + ",\"endY\":" + JsonUtil.Number(end.y) +
                     ",\"waterCheck\":" + waterCheck + "}");
             }

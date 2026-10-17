@@ -224,6 +224,25 @@ namespace SkylinesAgentBridge
             }
 
             direction = direction.normalized;
+
+            // Fair play: the same gates and charge as NetTool (unlocked prefab, owned land,
+            // NetAI.GetConstructionCost paid through EconomyManager, refused when unaffordable).
+            if (!FairPlay.PrefabUnlocked(prefab))
+            {
+                throw new BridgeException(FairPlay.LockedPrefab(prefab));
+            }
+            if (FairPlay.LineOutOfArea(start, end))
+            {
+                throw new BridgeException(FairPlay.OutOfAreaMessage + ": segment " +
+                    JsonUtil.Number(start.x) + "," + JsonUtil.Number(start.z) + " -> " +
+                    JsonUtil.Number(end.x) + "," + JsonUtil.Number(end.z));
+            }
+            int cost = SegmentCost(prefab, startNode, endNode);
+            if (!FairPlay.CanAfford(cost))
+            {
+                throw new BridgeException(FairPlay.NotEnoughMoney(cost) + "; segment " + prefab.name + " not built");
+            }
+
             Randomizer randomizer = simulation.m_randomizer;
 
             ushort segment;
@@ -277,6 +296,7 @@ namespace SkylinesAgentBridge
             }
 
             simulation.m_currentBuildIndex += 2u;
+            FairPlay.Charge(cost, prefab.m_class);
 
             if (name != null && name.Length > 0)
             {
@@ -284,6 +304,22 @@ namespace SkylinesAgentBridge
             }
 
             return segment;
+        }
+
+        /// <summary>
+        /// What NetTool charges for a segment between two existing nodes, priced the way
+        /// BulldozeTool.GetSegmentRefundAmount prices it (node m_elevation, negated underground).
+        /// </summary>
+        public static int SegmentCost(NetInfo prefab, ushort startNode, ushort endNode)
+        {
+            NetManager net = NetManager.instance;
+            NetNode a = net.m_nodes.m_buffer[startNode];
+            NetNode b = net.m_nodes.m_buffer[endNode];
+            float ea = a.m_elevation;
+            float eb = b.m_elevation;
+            if ((a.m_flags & NetNode.Flags.Underground) != NetNode.Flags.None) ea = -ea;
+            if ((b.m_flags & NetNode.Flags.Underground) != NetNode.Flags.None) eb = -eb;
+            return FairPlay.SegmentCost(prefab, a.m_position, b.m_position, ea, eb);
         }
 
         /// <summary>Returns the segment already joining the two nodes, or 0.</summary>
@@ -333,6 +369,12 @@ namespace SkylinesAgentBridge
                     {
                         if (segments[i] != 0)
                         {
+                            // Every segment in a rollback list was charged by CreateSegment; give it back.
+                            NetSegment rolled = net.m_segments.m_buffer[segments[i]];
+                            if ((rolled.m_flags & NetSegment.Flags.Created) != NetSegment.Flags.None && rolled.Info != null)
+                            {
+                                FairPlay.Refund(SegmentCost(rolled.Info, rolled.m_startNode, rolled.m_endNode), rolled.Info.m_class);
+                            }
                             GameThreadHelpers.ReleaseSegment(net, segments[i], true);
                         }
                     }

@@ -205,7 +205,31 @@ namespace SkylinesAgentBridge
                     ",\"capabilities\":[\"composite-commands\",\"capture\",\"node-snapping\",\"idempotent-ops\",\"transit\",\"chat\"]" +
                     ",\"defaultSpacing\":" + JsonUtil.Number(CompositeCommands.DefaultSpacing) +
                     ",\"snapDistance\":" + JsonUtil.Number(NodeHelper.DefaultSnapDistance) +
-                    ",\"city\":" + (bridge.LevelLoaded ? CityIdentity.BuildCityJson() : "null") + "}");
+                    ",\"city\":" + (bridge.LevelLoaded ? CityIdentity.BuildCityJson() : "null") +
+                    ",\"enabledMods\":" + LifecycleCommands.EnabledModsJson() + "}");
+            }
+
+            // Game lifecycle. These work at the main menu, so they run on MainThreadDispatcher's
+            // queue (a MonoBehaviour pump) instead of the in-game queue that only drains in a city.
+            if (request.Method == "GET" && request.Path == "/state/maps")
+            {
+                return RunOnMainThread(LifecycleCommands.ListMaps);
+            }
+
+            if (request.Method == "POST" && request.Path == "/commands/new-game")
+            {
+                string ngMap = JsonUtil.GetString(request.Body ?? "", "map", "");
+                string ngCity = JsonUtil.GetString(request.Body ?? "", "cityName", "");
+                bool ngInvert = JsonUtil.GetBool(request.Body ?? "", "invertTraffic", false);
+                bool ngDry = JsonUtil.GetBool(request.Body ?? "", "dryRun", false);
+                return RunOnMainThread(delegate { return LifecycleCommands.NewGame(ngMap, ngCity, ngInvert, ngDry); });
+            }
+
+            if (request.Method == "POST" && request.Path == "/commands/load-save")
+            {
+                string lsName = JsonUtil.GetString(request.Body ?? "", "name", "");
+                bool lsDry = JsonUtil.GetBool(request.Body ?? "", "dryRun", false);
+                return RunOnMainThread(delegate { return LifecycleCommands.LoadSave(lsName, lsDry); });
             }
 
             if (request.Method == "GET" && request.Path == "/state/summary")
@@ -327,6 +351,12 @@ namespace SkylinesAgentBridge
 
             if (request.Method == "GET" && request.Path == "/state/saves")
             {
+                // At the main menu (crash recovery) the in-game queue does not drain, so list
+                // through the main-thread dispatcher instead; it is plain file IO either way.
+                if (!bridge.LevelLoaded)
+                {
+                    return RunOnMainThread(SaveCommands.ListSaves);
+                }
                 return RunOnGameThread(request, SaveCommands.ListSaves);
             }
 
@@ -668,6 +698,36 @@ namespace SkylinesAgentBridge
             }, DefaultTimeoutMs);
 
             return HttpResponse.Json(final.Ok ? 200 : 500, final.Json);
+        }
+
+        private const int LifecycleTimeoutMs = 30000;
+
+        /// <summary>
+        /// Runs work on Unity's main thread through MainThreadDispatcher, which pumps in every
+        /// scene including the main menu. Unlike RunOnGameThread it does not require a loaded city.
+        /// A refusal (busy, cheat mods, bad argument) comes back as 409 so a supervisor can tell
+        /// "not now" from a 500 crash.
+        /// </summary>
+        private static HttpResponse RunOnMainThread(Func<CommandResult> action)
+        {
+            if (!MainThreadDispatcher.IsRunning)
+            {
+                return HttpResponse.Json(503, "{\"ok\":false,\"error\":\"The main-thread dispatcher is not running (the mod was not enabled through the PluginManager).\"}");
+            }
+
+            CommandResult result = MainThreadDispatcher.MenuQueue.RunSync(delegate
+            {
+                try
+                {
+                    return action();
+                }
+                catch (Exception ex)
+                {
+                    return CommandResult.Fail(ex.GetType().Name + ": " + ex.Message);
+                }
+            }, LifecycleTimeoutMs);
+
+            return HttpResponse.Json(result.Ok ? 200 : 409, result.Json);
         }
 
         // Dry runs change nothing in the city, so they stay out of the in-game console: a survey

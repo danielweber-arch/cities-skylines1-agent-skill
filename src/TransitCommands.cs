@@ -36,6 +36,11 @@ namespace SkylinesAgentBridge
         {
             bool dryRun = JsonUtil.GetBool(body, "dryRun", false);
 
+            string fairPlayRefusal = FairPlay.RefuseFlags(body, "ignoreUnlock");
+            if (fairPlayRefusal != null)
+            {
+                return CommandResult.Fail(fairPlayRefusal);
+            }
             bool ignoreUnlock = JsonUtil.GetBool(body, "ignoreUnlock", false);
 
             TransportInfo info;
@@ -757,7 +762,7 @@ namespace SkylinesAgentBridge
                 if (!ignoreUnlock)
                 {
                     error = info.name + " is not unlocked yet: " + UnlockReport.TransportUnlockSummary(info) +
-                        ". Pass ignoreUnlock:true to skip this check (the game's line tool would not offer it).";
+                        (FairPlay.CheatsAllowed ? ". Pass ignoreUnlock:true to skip this check (the game's line tool would not offer it)." : ". fair play: locked transit types are refused.");
                     return false;
                 }
                 unlockIgnored = true;

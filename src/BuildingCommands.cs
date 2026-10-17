@@ -36,17 +36,27 @@ namespace SkylinesAgentBridge
             // place accidentally through the API because BuildingManager.CreateBuilding does
             // not enforce the milestone itself. Keep an explicit escape hatch for a player who
             // is deliberately testing a locked prefab.
+            string refused = FairPlay.RefuseFlags(body, "ignoreUnlock");
+            if (refused != null)
+            {
+                return CommandResult.Fail(refused);
+            }
             bool ignoreUnlock = JsonUtil.GetBool(body, "ignoreUnlock", false);
             MilestoneInfo unlockMilestone = info.GetUnlockMilestone();
             if (!ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone))
             {
                 string milestoneName = unlockMilestone == null ? "unknown milestone" : (unlockMilestone.m_name ?? unlockMilestone.name ?? "unnamed milestone");
-                return CommandResult.Fail("Building prefab is locked: " + prefabName + " (" + milestoneName + "). Pass ignoreUnlock:true only for an intentional test.");
+                return CommandResult.Fail("Building prefab is locked: " + prefabName + " (" + milestoneName + ")." +
+                    (FairPlay.CheatsAllowed ? " Pass ignoreUnlock:true only for an intentional test." : " fair play: locked prefabs are refused."));
             }
 
             // Buildings whose position the in-game tool snaps (harbors and other shoreline
             // buildings) are validated by default; anything else only on "validate":true.
             bool validate = JsonUtil.GetBool(body, "validate", NeedsPlacementCheck(info));
+            if (!validate && NeedsPlacementCheck(info) && !FairPlay.CheatsAllowed)
+            {
+                return CommandResult.Fail("fair play: validate:false is disabled for " + info.m_placementMode + " buildings");
+            }
             if (validate)
             {
                 float elevation = JsonUtil.GetNumber(body, "elevation", 0f);
@@ -78,9 +88,21 @@ namespace SkylinesAgentBridge
                 return OnWaterFailure(info, position, waterCheck);
             }
 
+            // Fair play: owned land and the BuildingTool charge (BuildingAI.GetConstructionCost).
+            if (FairPlay.FootprintOutOfArea(info, position, angleDegrees * Mathf.Deg2Rad))
+            {
+                return CommandResult.Fail(FairPlay.OutOfAreaMessage + ".");
+            }
+            int cost = FairPlay.BuildingCost(info, false);
+            if (!FairPlay.CanAfford(cost))
+            {
+                return CommandResult.Fail(FairPlay.NotEnoughMoney(cost) + "; nothing was placed.");
+            }
+
             if (dryRun)
             {
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Place-building validation passed.\",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\",\"unlockIgnored\":" + JsonUtil.Bool(ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone)) +
+                    ",\"constructionCost\":" + cost +
                     ",\"waterCheck\":" + waterCheck + "}");
             }
 
@@ -107,12 +129,14 @@ namespace SkylinesAgentBridge
             }
 
             simulation.m_currentBuildIndex += 1u;
+            FairPlay.Charge(cost, info.m_class);
 
             string json = "{\"ok\":true,\"dryRun\":false,\"buildingId\":" + buildingId +
                 ",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"" +
                 ",\"service\":\"" + JsonUtil.Escape(info.m_class.m_service.ToString()) + "\"" +
                 ",\"subService\":\"" + JsonUtil.Escape(info.m_class.m_subService.ToString()) + "\"" +
                 ",\"unlockIgnored\":" + JsonUtil.Bool(ignoreUnlock && !UnlockReport.IsUnlocked(unlockMilestone)) +
+                ",\"constructionCost\":" + cost +
                 ",\"waterCheck\":" + waterCheck + "}";
 
             Debug.Log("[SkylinesAgentBridge] Placed building " + buildingId + " with prefab " + prefabName);
@@ -145,6 +169,12 @@ namespace SkylinesAgentBridge
             {
                 return CommandResult.Fail("Building prefab is blocked and must not be used for move/recreate: " + info.name + " (" + AssetPolicy.BlockReason(info.name) + ")");
             }
+            // Fair play: the game's Move button exists only for player-placed buildings
+            // (PlayerBuildingAI); growables and other city-owned buildings cannot be relocated.
+            if (!(info.m_buildingAI is PlayerBuildingAI) && !FairPlay.CheatsAllowed)
+            {
+                return CommandResult.Fail("fair play: " + info.name + " (" + (info.m_buildingAI == null ? "no AI" : info.m_buildingAI.GetType().Name) + ") cannot be moved; the game only relocates player-placed buildings");
+            }
 
             Vector3 position = ReadPoint(body, "position");
             TerrainManager terrain = TerrainManager.instance;
@@ -160,9 +190,21 @@ namespace SkylinesAgentBridge
                 return OnWaterFailure(info, position, waterCheck);
             }
 
+            // Fair play: owned land and the relocation charge (BuildingAI.GetRelocationCost).
+            if (FairPlay.FootprintOutOfArea(info, position, angle))
+            {
+                return CommandResult.Fail(FairPlay.OutOfAreaMessage + ".");
+            }
+            int relocationCost = FairPlay.BuildingCost(info, true);
+            if (!FairPlay.CanAfford(relocationCost))
+            {
+                return CommandResult.Fail(FairPlay.NotEnoughMoney(relocationCost) + "; nothing was moved.");
+            }
+
             if (dryRun)
             {
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"message\":\"Move-building validation passed.\",\"id\":" + id +
+                    ",\"relocationCost\":" + relocationCost +
                     ",\"buildingPrefab\":\"" + JsonUtil.Escape(info.name) + "\"" +
                     ",\"waterCheck\":" + waterCheck + "}");
             }
@@ -186,10 +228,12 @@ namespace SkylinesAgentBridge
             }
 
             simulation.m_currentBuildIndex += 1u;
+            FairPlay.Charge(relocationCost, info.m_class);
             GameThreadHelpers.ReleaseBuilding(buildings, id);
 
             string json = "{\"ok\":true,\"dryRun\":false,\"oldBuildingId\":" + id +
                 ",\"newBuildingId\":" + newBuildingId +
+                ",\"relocationCost\":" + relocationCost +
                 ",\"buildingPrefab\":\"" + JsonUtil.Escape(info.name) + "\"" +
                 ",\"position\":{\"x\":" + JsonUtil.Number(position.x) +
                 ",\"y\":" + JsonUtil.Number(position.y) +
@@ -593,6 +637,16 @@ namespace SkylinesAgentBridge
             PlacementCheck check = CheckPlacement(info, requested, angle, elevation);
             string checkJson = CheckJson(info, requested, check);
 
+            // Fair play: owned land, and the cost CheckBuildPosition returned (what BuildingTool charges).
+            if (FairPlay.FootprintOutOfArea(info, check.Position, check.Angle))
+            {
+                return CommandResult.Fail(FairPlay.OutOfAreaMessage + ".");
+            }
+            if (!FairPlay.CanAfford(check.ConstructionCost))
+            {
+                return CommandResult.Fail(FairPlay.NotEnoughMoney(check.ConstructionCost) + "; nothing was placed.");
+            }
+
             if (dryRun)
             {
                 return CommandResult.FromJson("{\"ok\":true,\"dryRun\":true,\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"," + checkJson + "}");
@@ -650,6 +704,7 @@ namespace SkylinesAgentBridge
                 }
             }
 
+            FairPlay.Charge(check.ConstructionCost, info.m_class);
             Debug.Log("[SkylinesAgentBridge] Placed validated building " + buildingId + " with prefab " + prefabName);
             return CommandResult.FromJson("{\"ok\":true,\"dryRun\":false,\"buildingId\":" + buildingId +
                 ",\"buildingPrefab\":\"" + JsonUtil.Escape(prefabName) + "\"" +

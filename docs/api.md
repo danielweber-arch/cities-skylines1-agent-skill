@@ -63,6 +63,12 @@ curl -sS "http://127.0.0.1:32123/health"
 The block is read off the game thread (the health route does not queue onto
 the simulation), so a value can be one frame stale. Size: a few hundred bytes.
 
+`enabledMods` (added 2026-10-17, UNVERIFIED IN GAME): the names of every enabled
+plugin in `PluginManager.instance.GetPluginsInfo()` (the `IUserMod.Name`, else the
+plugin folder name), including this bridge. A supervisor uses it to verify no
+gameplay mod is running. `null` if the PluginManager could not be read. Read off
+the main thread, like `city`.
+
 ## GET /state/summary
 
 Returns a small city snapshot: game time, build index, network counts, citizen count, and demand values.
@@ -1036,6 +1042,106 @@ Supported command types:
 - `set-zone`
 
 If an item does not include `dryRun`, it inherits the batch-level `dryRun` value. Batches are limited to 32 commands.
+
+## Game lifecycle
+
+UNVERIFIED IN GAME. Added 2026-10-17 and compiled against the installed
+Assembly-CSharp, but never run against a live game. Everything below describes
+what the code does, not observed behaviour.
+
+These three routes let an unattended loop start a brand-new city and recover
+from a crash with no clicking. They work at the main menu (`levelLoaded:false`).
+They run on Unity's main thread through `MainThreadDispatcher`, a
+`DontDestroyOnLoad` MonoBehaviour created in `IUserMod.OnEnabled`. The in-game
+queue (`AgentBridgeThreading`) is not used here, because `SimulationManager`
+only ticks threading extensions once a level exists. The timeout is 30 s. A
+refusal or bad argument returns **409** with `{"ok":false,"error":...}`. 503
+means the dispatcher is not running.
+
+**Fair play.** Neither command enables any cheat. Both refuse when any enabled
+plugin's name or folder, normalised to lower-case letters and digits, is
+`unlimitedmoney`, `unlockall`, `unlimitedoilandore` or `unlimitedsoil` (the
+built-in mods in `Files/Mods`). The error names the mods it found. Achievements
+are set the way the game's own panels set them; the bridge does not change them.
+
+Other refusals: `LoadingManager.m_currentlyLoading` (a load is in progress),
+`SavePanel.isSaving`, and for new-game only, a city already loaded.
+
+### GET /state/maps
+
+Lists the maps the New Game panel would show. It copies `NewGamePanel.Refresh`:
+`PackageManager.FilterAssets(UserAssetType.MapMetaData)` assets that are
+enabled, `MapMetaData.isPublished`, and not `NewGamePanel.IsUnplayableNDScenarioMap`.
+`playable` / `dlcOwned` is the panel's own start-button gate,
+`SteamHelper.IsDLCOwned(NewGamePanel.GetRequiredDLCFromMapName(package, meta))`.
+
+```json
+{"ok":true,"levelLoaded":false,"count":1,"buildableAreaUnit":"...","maps":[
+ {"ref":"Green Plains.Green Plains_Data","mapName":"Green Plains","displayName":"Green Plains",
+  "assetName":"Green Plains_Data","packageName":"Green Plains","environment":"Temperate",
+  "mapThemeRef":null,"builtin":true,"workshop":false,"publishedFileId":null,
+  "requiredDlc":"None","dlcOwned":true,"playable":true,"buildableArea":25,
+  "resources":{"oil":0,"ore":0,"forest":0,"fertileLand":0,"water":0,"maxResourceAmount":0},
+  "connections":{"roadsIn":2,"roadsOut":2,"trainIn":1,"trainOut":1,"shipIn":0,"shipOut":0,"planeIn":1,"planeOut":1}}]}
+```
+
+The values above are illustrative. `ref` is `Package.Asset.fullName`.
+`buildableArea` and `resources` are the raw `MapMetaData` fields that the panel
+renders, and their units have not been checked against the panel.
+
+### POST /commands/new-game
+
+```json
+{"map":"<ref, assetName, packageName, mapName or displayName>","cityName":"Agentburg","invertTraffic":false,"dryRun":true}
+```
+
+The map is matched exactly first, then ignoring case. An ambiguous match is
+refused with the candidate refs. The command copies `NewGamePanel.OnStartNewGame`
+-> `CheckForDisasterActivation` -> `StartNewGameRoutine`, field for field:
+`m_CityName`, `m_gameInstanceIdentifier = Guid.NewGuid()`, `m_invertTraffic`
+(MetaBool True/False from `invertTraffic`, the panel checkbox, default
+unchecked), `m_disableAchievements = MetaBool.False`, `m_startingDateTime` and
+`m_currentDateTime = DateTime.Now`, `m_newGameAppVersion = BuildConfig.APPLICATION_VERSION`,
+`m_updateMode = NewGameFromMap`, `m_MapName`, and the map's own theme if it is
+installed. It then calls `LoadingManager.LoadLevel(asset, "Game", "InGame", meta, false)`.
+It refuses a map whose DLC is not owned and an empty `cityName`. `dryRun`
+resolves the map and returns the metadata it would use, without loading.
+
+Differences from clicking: the panel's two confirm modals are skipped.
+`CONFIRM_MAPTHEME_MISSING`: a missing theme is dropped, as accepting the modal
+would. `TEXTFORRANDOMDISASTERS`: the disasters setting is left as it is. The
+theme-override dropdown is not offered.
+
+Response: `{"ok":true,"dryRun":false,"map":{...},"cityName":...,"gameInstanceIdentifier":...,"invertTraffic":false,"disableAchievements":"False","newGameAppVersion":...,"updateMode":"NewGameFromMap","themeApplied":false,"message":...}`.
+It returns as soon as loading starts. Poll `/health` until `levelLoaded:true`.
+
+### POST /commands/load-save
+
+```json
+{"name":"AgentAutoSave","dryRun":true}
+```
+
+This works from the main menu or in game. The name is matched exactly against
+the LoadPanel listing name (`Package.Asset.name`), the `.crp` file name (as
+`GET /state/saves` shows it), or the package name, then ignoring case. When
+several saves match, the newest by `SaveGameMetaData.timeStamp` wins, and
+`matches` says how many there were. The command copies `LoadPanel.OnLoad` ->
+`LoadRoutine`: in game it calls `ToolsModifierControl.CloseEverything()`. It
+sets `LoadPanel.m_LastSaveName` (by reflection), `SavePanel.lastLoadedName` and
+`SavePanel.lastCloudSetting`, then builds `SimulationMetaData`:
+`m_CityName = cityName`, `m_updateMode = LoadGame`,
+`m_environment = LoadPanel.m_forceEnvironment`, and
+`m_disableAchievements = True` for a workshop save, as the game does. It applies
+the save's theme if installed and calls `LoadLevel(asset, "Game", "InGame", meta, false)`.
+Only saves the PackageManager knows are found; the extra `SaveHelper.GetSavesOnDisk()`
+pass of `LoadPanel.Refresh` is not copied. `GET /state/saves` now also answers at
+the main menu.
+
+Response: `{"ok":true,"dryRun":false,"name":...,"ref":...,"file":...,"matches":1,"cityName":...,"timeStamp":...,"workshop":false,"themeApplied":false,"fromLevelLoaded":false,"message":...}`.
+
+MCP tools: `cs1_state_maps` (filters `playableOnly` (default true),
+`builtinOnly`, `environment`), `cs1_new_game`, `cs1_load_save`
+(`mcp-server/src/tools/lifecycle.ts`).
 
 ## Map tiles
 

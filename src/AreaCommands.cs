@@ -112,6 +112,11 @@ namespace SkylinesAgentBridge
         public static CommandResult UnlockArea(string body)
         {
             bool dryRun = JsonUtil.GetBool(body, "dryRun", false);
+            string fairPlayRefusal = FairPlay.RefuseFlags(body, "ignoreMaxAreaCount", "ignoreMilestoneLimit");
+            if (fairPlayRefusal != null)
+            {
+                return CommandResult.Fail(fairPlayRefusal);
+            }
             bool raiseCap = JsonUtil.GetBool(body, "ignoreMaxAreaCount", false) ||
                 JsonUtil.GetBool(body, "ignoreMilestoneLimit", false);
 
@@ -157,7 +162,7 @@ namespace SkylinesAgentBridge
 
             string reason = null;
             if (owned) reason = "Tile is already owned.";
-            else if (!underCap) reason = "At the maximum area count (" + areas.m_areaCount + " of " + effectiveMax + "). Pass ignoreMaxAreaCount:true to raise the cap to " + GridMaxAreaCount + ".";
+            else if (!underCap) reason = "At the maximum area count (" + areas.m_areaCount + " of " + effectiveMax + ")." + (FairPlay.CheatsAllowed ? " Pass ignoreMaxAreaCount:true to raise the cap to " + GridMaxAreaCount + "." : "");
             else if (!milestoneReached) reason = "The next tile needs an area milestone the city has not reached: " + MilestoneName(areas.m_areaCount) + ".";
             else if (!adjacent) reason = "Tile is not edge-adjacent to an owned tile.";
             else if (!affordable) reason = "Not enough money for price " + price + ".";

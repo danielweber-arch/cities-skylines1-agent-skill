@@ -413,10 +413,6 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         end: point,
         snapDistance: z.number().min(0).max(64).optional(),
         name: z.string().optional(),
-        allowRoadOverlap: z
-          .boolean()
-          .optional()
-          .describe("Default false. Build a surface path onto a road anyway (non-vanilla geometry)."),
         dryRun,
       },
     },
@@ -445,8 +441,9 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
     "cs1_place_building",
     {
       description:
-        "Place a building, including a unique or waterfront attraction. Locked prefabs are refused " +
-        "by default; use ignoreUnlock only for an intentional test. Follow every placement with " +
+        "Place a building, including a unique or waterfront attraction. Fair play: locked prefabs are " +
+        "refused, the construction cost is charged like the game's tool (refused when the city cannot " +
+        "pay), and nothing is placed outside owned tiles. Follow every placement with " +
         "cs1_connect on the same position when it needs road access." +
         WATER_GUARD_NOTE +
         " Exempt: buildings with placement mode Shoreline, ShorelineOrGround, or OnWater " +
@@ -459,7 +456,6 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         angleDegrees: z.number().optional(),
         validate: z.boolean().optional().describe("Run the in-game placement and collision checks."),
         elevation: z.number().optional().describe("Elevation step used by validated placement."),
-        ignoreUnlock: z.boolean().optional().describe("Bypass the prefab milestone gate for an intentional test."),
         widthCells: z.number().int().min(1).optional().describe("Footprint override, 8 m cells, for assets the prefab list lacks. Never shrinks below the listed width."),
         lengthCells: z.number().int().min(1).optional().describe("Footprint override, 8 m cells, for assets the prefab list lacks. Never shrinks below the listed length."),
         dryRun,
@@ -527,14 +523,6 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         tileZ: z.number().int().min(0).max(4).optional(),
         x: z.number().optional().describe("World X in metres; used when tileX/tileZ are absent."),
         z: z.number().optional().describe("World Z in metres; used when tileX/tileZ are absent."),
-        ignoreMaxAreaCount: z
-          .boolean()
-          .optional()
-          .describe(
-            "Raise the game's max-area cap (default 9) to 25 before buying, as tile mods do. " +
-              "Does not bypass the area milestones. Not saved: a reload resets the cap to " +
-              "max(9, owned tiles).",
-          ),
         dryRun: z.boolean().optional().describe("Validate and report the price without buying."),
       },
     },

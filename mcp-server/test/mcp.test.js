@@ -150,21 +150,34 @@ test("a wrong zone name is caught by the schema", async () => {
   });
 });
 
-test("build-network passes allowRoadOverlap through and types it", async () => {
-  await withServer(async (client) => {
+test("fair play: bypass flags are not offered and never reach the bridge", async () => {
+  await withServer(async (client, requests) => {
     // Kept under x=600: the mock's deterministic water rule (x > 600) would otherwise trip the
     // new inline H-WATER check, which is unrelated to what this test is verifying.
     const base = { roadPrefab: "Pedestrian Pavement", start: { x: 273.5, z: 865.69 }, end: { x: 273.5, z: 829.69 } };
-    const echoed = JSON.parse(
-      textOf(await client.callTool({ name: "cs1_build_network", arguments: { ...base, allowRoadOverlap: true } })),
-    );
-    assert.equal(echoed.echo.allowRoadOverlap, true, "the flag reaches the bridge");
-
-    const bad = await client
-      .callTool({ name: "cs1_build_network", arguments: { ...base, allowRoadOverlap: "yes" } })
-      .catch((error) => ({ thrown: error }));
-    const message = bad.thrown ? String(bad.thrown) : textOf(bad);
-    assert.match(message, /allowRoadOverlap|boolean|invalid|expected/i, `expected a validation failure, got: ${message}`);
+    const calls = [
+      { name: "cs1_build_network", arguments: { ...base, allowRoadOverlap: true } },
+      { name: "cs1_place_building", arguments: { buildingPrefab: "Fire House", position: { x: 0, z: 0 }, ignoreUnlock: true } },
+      { name: "cs1_unlock_area", arguments: { tileX: 1, tileZ: 2, ignoreMaxAreaCount: true } },
+      { name: "cs1_transit_line_create", arguments: { transportType: "Bus", stops: [{ x: 0, z: 0 }, { x: 240, z: 0 }], ignoreUnlock: true } },
+    ];
+    const flags = ["allowRoadOverlap", "ignoreUnlock", "ignoreMaxAreaCount", "ignoreMilestoneLimit"];
+    for (const call of calls) {
+      // The schema either rejects the call or strips the unknown key; either way the bridge never sees it.
+      await client.callTool(call).catch((error) => ({ thrown: error }));
+    }
+    for (const r of requests) {
+      for (const flag of flags) {
+        assert.ok(!(r.body && typeof r.body === "object" && flag in r.body), `${flag} reached the bridge: ${JSON.stringify(r)}`);
+      }
+    }
+    const tools = (await client.listTools()).tools;
+    for (const tool of tools) {
+      const props = Object.keys(tool.inputSchema?.properties ?? {});
+      for (const flag of flags) {
+        assert.ok(!props.includes(flag), `${tool.name} must not offer ${flag}`);
+      }
+    }
   });
 });
 

@@ -34,12 +34,15 @@ namespace SkylinesAgentBridge
         /// </summary>
         public void OnEnabled()
         {
+            // Main-menu main-thread pump for the lifecycle routes (new game, load save, maps).
+            MainThreadDispatcher.Ensure();
             EnsureServer();
         }
 
         public void OnDisabled()
         {
             levelLoaded = false;
+            MainThreadDispatcher.Shutdown();
             CaptureCommands.Cancel();
             queue.Clear();
             OpCache.Clear();
