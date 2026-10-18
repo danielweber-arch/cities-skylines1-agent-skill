@@ -103,6 +103,15 @@ Open items are mirrored in `TODOS.md`.
 17. **Construction cost is not shown in composite dry runs** (`build-grid`, `build-neighborhood`,
     `connect`). Already logged in TODOS (fair play).
 
+22. **A road can't join a rail node, so there's no level crossing.** North Station had no road
+    access because the only road was across the tracks. A road built to rail node 8918 ended on
+    a new node instead of snapping onto the rail node (2026-10-17 20:33), so no level crossing
+    formed.
+    **Fix:** let `build-network` / `connect` snap a road endpoint onto an existing rail
+    (train/metro ground) node and create the crossing the way the game's road tool does. Also
+    report station front-side road access in `place-building`'s result, so a station is never
+    placed facing away from every road.
+
 ## D. State reads and monitoring
 
 18. **`/capture` returns a blank image on this install** (the mayor's note, 2026-10-17), so all
