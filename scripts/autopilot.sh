@@ -774,9 +774,18 @@ autopilot: on
             CHAT_WAIT=25 intake_chat; sleep 300; continue
         fi
         log "operator turn"
+        # Same order set as the previous operator turn: tell the operator so it continues
+        # instead of re-running finished stages (happened twice on 2026-10-17).
+        oh=$(shasum "$dir/autopilot/orders.md" 2>/dev/null | cut -c1-12)
+        cont=""
+        if [ -n "$oh" ] && [ "$oh" = "$(st '.lastOperatorOrdersHash')" ]; then
+            prev=$(jq -r '"\(.status): \(.summary)"' "$dir/autopilot/report.json" 2>/dev/null | head -c 1500)
+            cont="CONTINUATION: these exact orders were already worked on by the previous operator turn. Its report: ${prev:-none}. Read progress.md and the live state, skip every stage already done, and do ONLY the unfinished stages. If all stages are done, write status done without building anything."
+        fi
+        st_set lastOperatorOrdersHash "\"$oh\""
         rm -f "$dir/autopilot/report.json"
         op_rc=0
-        run_turn operator "$OPERATOR_MODEL" "$(prompt_file operator "${vars[@]}")" "$dir/autopilot/turns" "$OPERATOR_WALL" || op_rc=$?
+        run_turn operator "$OPERATOR_MODEL" "$(prompt_file operator "${vars[@]}" CONTINUATION="$cont")" "$dir/autopilot/turns" "$OPERATOR_WALL" || op_rc=$?
         if [ "$op_rc" = 2 ]; then
             continue   # the game went down mid-turn: recover it, then the operator resumes the same orders
         fi

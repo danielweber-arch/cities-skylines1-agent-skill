@@ -25,6 +25,23 @@ The player's orders (2026-10-17), binding on every turn:
   workers can commute." Every monument: road access, a transit stop within about 300 m walking,
   and a pedestrian link. Every industrial/office area: a transit stop within about 300 m on a
   line that reaches the housing (the zones themselves stay apart).
+- Pace (player's words, 2026-10-17): "Grow the city faster. Turbocharge growth if possible."
+  Growth speed is the first priority inside the other rules: speed 3, minimum taxes (money is
+  unlimited), demand-sized zoning waves (bigger when a bar is above 50, none when under 20),
+  services and education ahead of demand, new tiles as soon as allowed.
+- Waterfront (player's words, 2026-10-17): "Effectively utilize waterfront. Be careful for
+  flooding hazards." Use the coast for promenades, parks, leisure frontage, ferry and harbour.
+  Before any build within about 200 m of water, sample terrain height against the water surface:
+  no zoning or buildings below about 6 m above the water or on wet flats; the shoreline strip
+  gets paths, parks or quays, never houses; never dam a channel or raise water near buildings.
+- Tourism (player's words, 2026-10-17): "Ensure we maximize tourism and accessibility for
+  tourists." Every arrival point (train, intercity bus, harbour, airport, highway gate) links to
+  the attractions by transit within one transfer and by continuous walkways; attractions cluster
+  in walkable districts with Leisure/Tourism commercial; tourists on transit is a scored KPI.
+- Supercharge (player's words, 2026-10-17): "Supercharge growth". Never let growth wait for
+  space: keep ~25% spare empty zoned capacity for every type whose demand is above 0; push every
+  growth factor ahead of demand. Safety rules (flood, house/industry buffer, one save, no bypass
+  flags, access) still apply.
 - No git commands. Do not edit files outside the city folder except root lessons.md/knowledge.md
   where your role says so.
 - The player can only reach us through the in-game chat window. Their messages outrank the plan.

@@ -19,7 +19,8 @@ ask for that, explain kindly in your answer that you will not.
 Decide the next step and write both files:
 
 1. {{DIR}}/autopilot/orders.md: ONE step the operator (Sonnet, no strategic judgment) can finish
-   in under 30 minutes. Concrete: tool calls, prefab names, coordinates or tiles, sizes, zoning
+   in under 45 minutes. Pack it: up to 8 stages (30-45 minutes of operator work), so growth
+   does not wait on a mayor turn between small jobs. Concrete: tool calls, prefab names, coordinates or tiles, sizes, zoning
    types, budget cap, and tolerances (for example "shift up to 100 m if blocked", "do only as
    many items as the cash covers, keep at least 20,000 in the bank"). End it with the acceptance
    checks (which state read must show what). Check the sites yourself first with read-only tools

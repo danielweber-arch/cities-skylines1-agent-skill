@@ -10,6 +10,13 @@ import type { Plan } from "../checker.js";
 const point = z.object({
   x: z.number().describe("World X in metres."),
   z: z.number().describe("World Z in metres."),
+  elevation: z
+    .number()
+    .optional()
+    .describe(
+      "Metres above the terrain (negative = below). Needed on both points for tunnel, elevated " +
+        "and bridge prefabs (for example Metro Track at -12); omitted for ground networks.",
+    ),
 });
 
 const opId = z
@@ -184,6 +191,23 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
       if (error instanceof CityGuardError) return fail(error);
       return fail(error);
     }
+  };
+
+  // Elevation is honoured only for prefabs that really leave the ground (bridge, elevated, slope,
+  // tunnel, and the underground metro track whose name says neither). On a ground prefab a stray
+  // elevation would make the checker and the bridge treat the points as non-ground and skip the
+  // water guard (codex review 2026-10-17), so it is dropped before the plan check and the call.
+  const allowsElevation = (prefab: string): boolean =>
+    /bridge|elevated|slope|tunnel/i.test(prefab) || /^metro (oneway )?track$/i.test(prefab.trim());
+
+  const withGroundElevationStripped = <T extends Record<string, unknown>>(args: T): T => {
+    if (allowsElevation(String(args.roadPrefab ?? ""))) return args;
+    const strip = (p: unknown) => {
+      if (!p || typeof p !== "object") return p;
+      const { elevation: _dropped, ...rest } = p as Record<string, unknown>;
+      return rest;
+    };
+    return { ...args, start: strip(args.start), end: strip(args.end) };
   };
 
   const networkPlan = (body: Record<string, unknown>): Plan | null => {
@@ -416,7 +440,7 @@ export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
         dryRun,
       },
     },
-    async (args) => run("/commands/build-network", args, networkPlan),
+    async (args) => run("/commands/build-network", withGroundElevationStripped(args), networkPlan),
   );
 
   server.registerTool(

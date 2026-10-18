@@ -1,5 +1,8 @@
 ## Your role: master planner (Fable 5.1). Reason: {{REASON}}
 
+Apply every player standing order in {{DIR}}/city.md, newest first: the newest dated orders
+outrank older parts of plan.md, and the plan you write must answer each of them explicitly.
+
 Read {{DIR}}/city.md (brief, standing orders), {{DIR}}/plan.md, the tail of {{DIR}}/progress.md,
 {{DIR}}/autopilot/journal.md and the last report ({{DIR}}/autopilot/report.json if present).
 Read the live city: /state/summary, /state/demand, /state/areas (cash, milestone, tiles),

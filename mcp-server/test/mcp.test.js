@@ -181,6 +181,45 @@ test("fair play: bypass flags are not offered and never reach the bridge", async
   });
 });
 
+test("cs1_build_network forwards point elevation to the bridge (tunnels, elevated track)", async () => {
+  await withServer(async (client, requests) => {
+    await client
+      .callTool({
+        name: "cs1_build_network",
+        arguments: {
+          roadPrefab: "Metro Track",
+          start: { x: 100, z: -300, elevation: -12 },
+          end: { x: 100, z: -460, elevation: -12 },
+          dryRun: true,
+        },
+      })
+      .catch((error) => ({ thrown: error }));
+    const sent = requests.find((r) => r.body && typeof r.body === "object" && r.body.roadPrefab === "Metro Track");
+    assert.ok(sent, `the build request reached the bridge: ${JSON.stringify(requests)}`);
+    assert.equal(sent.body.start.elevation, -12, "start elevation kept");
+    assert.equal(sent.body.end.elevation, -12, "end elevation kept");
+  });
+});
+
+test("cs1_build_network drops elevation on ground prefabs so the water guard still applies", async () => {
+  await withServer(async (client, requests) => {
+    await client
+      .callTool({
+        name: "cs1_build_network",
+        arguments: {
+          roadPrefab: "Basic Road",
+          start: { x: 100, z: -300, elevation: 1 },
+          end: { x: 100, z: -460, elevation: 1 },
+          dryRun: true,
+        },
+      })
+      .catch((error) => ({ thrown: error }));
+    const sent = requests.find((r) => r.body && typeof r.body === "object" && r.body.roadPrefab === "Basic Road");
+    assert.ok(sent, "the build request reached the bridge");
+    assert.ok(!("elevation" in sent.body.start) && !("elevation" in sent.body.end), `elevation must be dropped: ${JSON.stringify(sent.body)}`);
+  });
+});
+
 test("build-grid returns block centres ready to zone", async () => {
   await withServer(async (client) => {
     const parsed = JSON.parse(
