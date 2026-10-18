@@ -34,12 +34,9 @@ Prefer `codex/feature/*` for agent-authored branches so automated work is easy t
 
 4. Validate locally before opening a PR.
 
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps1
-   pushd docs
-   npm install
-   npm run build
-   popd
+   ```bash
+   ./scripts/check-doc-links.sh
+   cd docs && npm install && npm run build
    ```
 
 5. Push the feature branch and open a PR into `develop`.
@@ -74,7 +71,7 @@ AI review is a second set of eyes, not a replacement for project ownership. Ask 
 
 - runtime risks inside the CS1 mod and Unity API usage
 - API response compatibility and JSON shape changes
-- script safety on Windows PowerShell
+- script safety in the bash helpers on macOS
 - documentation drift between English and Japanese pages
 - missing validation or release notes for user-facing behavior
 

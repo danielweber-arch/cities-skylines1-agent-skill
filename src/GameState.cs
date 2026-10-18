@@ -16,6 +16,7 @@ namespace SkylinesAgentBridge
             StringBuilder json = new StringBuilder();
             json.Append("{\"ok\":true");
             json.Append(",\"gameTime\":\"").Append(JsonUtil.Escape(simulation.m_currentGameTime.ToString("s"))).Append("\"");
+            json.Append(",\"city\":").Append(CityIdentity.BuildCityJson());
             json.Append(",\"buildIndex\":").Append(simulation.m_currentBuildIndex);
             json.Append(",\"simulation\":{\"paused\":").Append(JsonUtil.Bool(simulation.SimulationPaused));
             json.Append(",\"selectedSpeed\":").Append(simulation.SelectedSimulationSpeed);
@@ -287,12 +288,26 @@ namespace SkylinesAgentBridge
                 json.Append("{\"name\":\"").Append(JsonUtil.Escape(info.name)).Append("\"");
                 json.Append(",\"displayName\":\"").Append(JsonUtil.Escape(info.GetUncheckedLocalizedTitle())).Append("\"");
                 json.Append(",\"service\":\"").Append(JsonUtil.Escape(service)).Append("\"");
-                json.Append(",\"subService\":\"").Append(JsonUtil.Escape(info.m_class.m_subService.ToString())).Append("\"}");
+                json.Append(",\"subService\":\"").Append(JsonUtil.Escape(info.m_class.m_subService.ToString())).Append("\"");
+                json.Append(",\"ai\":\"").Append(JsonUtil.Escape(info.m_netAI == null ? "" : info.m_netAI.GetType().Name)).Append("\"");
+                json.Append(",\"connectionClass\":").Append(ItemClassJson(info.GetConnectionClass()));
+                json.Append(",\"intersectClass\":").Append(ItemClassJson(info.m_intersectClass)).Append("}");
                 first = false;
             }
 
             json.Append("]}");
             return CommandResult.FromJson(json.ToString());
+        }
+
+        /// <summary>"Service/SubService/Layer", or null. NetTool snaps to nodes by these classes.</summary>
+        private static string ItemClassJson(ItemClass itemClass)
+        {
+            // (object) like NetManager.RayCast: a Unity "fake null" must not read as null here.
+            if ((object)itemClass == null)
+            {
+                return "null";
+            }
+            return "\"" + JsonUtil.Escape(itemClass.m_service.ToString() + "/" + itemClass.m_subService.ToString() + "/" + itemClass.m_layer.ToString()) + "\"";
         }
 
         public static CommandResult BuildBuildingPrefabsJson(string serviceFilter)
@@ -331,12 +346,43 @@ namespace SkylinesAgentBridge
                 json.Append(",\"subService\":\"").Append(JsonUtil.Escape(info.m_class.m_subService.ToString())).Append("\"");
                 json.Append(",\"level\":\"").Append(JsonUtil.Escape(info.m_class.m_level.ToString())).Append("\"");
                 json.Append(",\"width\":").Append(info.GetWidth());
-                json.Append(",\"length\":").Append(info.GetLength()).Append("}");
+                json.Append(",\"length\":").Append(info.GetLength());
+                json.Append(",\"placementMode\":\"").Append(JsonUtil.Escape(info.m_placementMode.ToString())).Append("\"");
+                json.Append(",\"ai\":\"").Append(JsonUtil.Escape(info.m_buildingAI == null ? "" : info.m_buildingAI.GetType().Name)).Append("\"");
+                AppendBuildingUnlock(json, info);
+                json.Append("}");
                 first = false;
             }
 
             json.Append("]}");
             return CommandResult.FromJson(json.ToString());
+        }
+
+        /// <summary>
+        /// The build panel enables a building's button with
+        /// ToolsModifierControl.IsUnlocked(info.GetUnlockMilestone()) (GeneratedScrollPanel.CreateAssetItem).
+        /// place-building does not check it; this only reports it.
+        /// </summary>
+        private static void AppendBuildingUnlock(StringBuilder json, BuildingInfo info)
+        {
+            try
+            {
+                MilestoneInfo milestone = info.GetUnlockMilestone();
+                json.Append(",\"unlocked\":").Append(JsonUtil.Bool(UnlockReport.IsUnlocked(milestone)));
+                json.Append(",\"unlockMilestone\":");
+                if ((object)milestone == null)
+                {
+                    json.Append("null");
+                }
+                else
+                {
+                    json.Append("\"").Append(JsonUtil.Escape(milestone.m_name ?? milestone.name ?? "")).Append("\"");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                json.Append(",\"unlocked\":null,\"unlockError\":\"").Append(JsonUtil.Escape(ex.GetType().Name + ": " + ex.Message)).Append("\"");
+            }
         }
 
         public static CommandResult BuildProblemsJson(int limit)
@@ -671,6 +717,11 @@ namespace SkylinesAgentBridge
                 items.Append(",\"problems\":\"").Append(JsonUtil.Escape(problems)).Append("\"");
                 items.Append(",\"startNodeId\":").Append(startNodeId);
                 items.Append(",\"endNodeId\":").Append(endNodeId);
+                // NetNode.m_lane: the lane a node is linked to by UpdateLaneConnection. For a pedestrian
+                // path this is how it reaches a road (the road sidewalk's lane), not a shared node.
+                // Emitted only when set; the game fills it on the simulation step after the node changes.
+                AppendNodeLaneSegment(items, manager, startNodeId, "startNodeLaneSegmentId");
+                AppendNodeLaneSegment(items, manager, endNodeId, "endNodeLaneSegmentId");
                 items.Append(",\"start\":{\"x\":").Append(JsonUtil.Number(start.x));
                 items.Append(",\"y\":").Append(JsonUtil.Number(start.y));
                 items.Append(",\"z\":").Append(JsonUtil.Number(start.z)).Append("}");
@@ -701,6 +752,23 @@ namespace SkylinesAgentBridge
                 ",\"serviceFilter\":\"" + JsonUtil.Escape(serviceFilter) + "\"" +
                 ",\"countsByService\":{" + services.ToString() + "}" +
                 ",\"segments\":[" + items.ToString() + "]}");
+        }
+
+        private static void AppendNodeLaneSegment(StringBuilder json, NetManager manager, ushort nodeId, string field)
+        {
+            uint lane = manager.m_nodes.m_buffer[nodeId].m_lane;
+            if (lane == 0 || lane >= manager.m_lanes.m_buffer.Length)
+            {
+                return;
+            }
+            // The node's m_lane can lag a released road until the node updates: only report a live segment.
+            ushort segment = manager.m_lanes.m_buffer[lane].m_segment;
+            if (segment == 0 || segment >= manager.m_segments.m_buffer.Length ||
+                (manager.m_segments.m_buffer[segment].m_flags & (NetSegment.Flags.Created | NetSegment.Flags.Deleted)) != NetSegment.Flags.Created)
+            {
+                return;
+            }
+            json.Append(",\"").Append(field).Append("\":").Append(segment);
         }
 
         public static CommandResult BuildRoadAnomaliesJson(int limit, float nearMissDistance, float shortSegmentLength, bool includeDeadEnds)

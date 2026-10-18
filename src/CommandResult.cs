@@ -6,6 +6,12 @@ namespace SkylinesAgentBridge
         public string Json;
         public string Error;
 
+        /// <summary>
+        /// Set when the command queued simulation-thread work; the API server awaits it off the
+        /// main thread and returns its result instead of this one.
+        /// </summary>
+        public SimulationJob Deferred;
+
         public static CommandResult FromJson(string json)
         {
             CommandResult result = new CommandResult();

@@ -1,0 +1,2330 @@
+[
+  {
+    "summary": {
+      "ok": true,
+      "gameTime": "2026-10-01T09:00:00",
+      "buildIndex": 12345,
+      "simulation": {
+        "paused": false,
+        "selectedSpeed": 3,
+        "finalSpeed": 3
+      },
+      "network": {
+        "nodes": 1000,
+        "segments": 1200,
+        "lanes": 4000
+      },
+      "citizens": {
+        "count": 41790
+      },
+      "demand": {
+        "residential": 40,
+        "commercial": 30,
+        "workplace": 20
+      }
+    },
+    "transit": {
+      "ok": true,
+      "totalsByType": {
+        "Bus": {
+          "lines": 6,
+          "completeLines": 6,
+          "stops": 60,
+          "vehicles": 40,
+          "targetVehicles": 40,
+          "passengersLastWeek": 3130
+        }
+      }
+    },
+    "problems": {
+      "ok": true,
+      "total": 41,
+      "returned": 41,
+      "limit": 200,
+      "counts": {
+        "building": 41
+      },
+      "countsByProblem": {
+        "NoPower": 39,
+        "DespawnStuck": 2
+      },
+      "problems": [
+        {
+          "entityType": "building",
+          "id": 500,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 0,
+            "y": 40,
+            "z": 0
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 501,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 1,
+            "y": 40,
+            "z": 1
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 502,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 2,
+            "y": 40,
+            "z": 2
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 503,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 3,
+            "y": 40,
+            "z": 3
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 504,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 4,
+            "y": 40,
+            "z": 4
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 505,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 5,
+            "y": 40,
+            "z": 5
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 506,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 6,
+            "y": 40,
+            "z": 6
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 507,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 7,
+            "y": 40,
+            "z": 7
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 508,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 8,
+            "y": 40,
+            "z": 8
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 509,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 9,
+            "y": 40,
+            "z": 9
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 510,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 10,
+            "y": 40,
+            "z": 10
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 511,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 11,
+            "y": 40,
+            "z": 11
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 512,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 12,
+            "y": 40,
+            "z": 12
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 513,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 13,
+            "y": 40,
+            "z": 13
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 514,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 14,
+            "y": 40,
+            "z": 14
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 515,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 15,
+            "y": 40,
+            "z": 15
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 516,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 16,
+            "y": 40,
+            "z": 16
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 517,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 17,
+            "y": 40,
+            "z": 17
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 518,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 18,
+            "y": 40,
+            "z": 18
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 519,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 19,
+            "y": 40,
+            "z": 19
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 520,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 20,
+            "y": 40,
+            "z": 20
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 521,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 21,
+            "y": 40,
+            "z": 21
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 522,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 22,
+            "y": 40,
+            "z": 22
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 523,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 23,
+            "y": 40,
+            "z": 23
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 524,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 24,
+            "y": 40,
+            "z": 24
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 525,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 25,
+            "y": 40,
+            "z": 25
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 526,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 26,
+            "y": 40,
+            "z": 26
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 527,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 27,
+            "y": 40,
+            "z": 27
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 528,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 28,
+            "y": 40,
+            "z": 28
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 529,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 29,
+            "y": 40,
+            "z": 29
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 530,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 30,
+            "y": 40,
+            "z": 30
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 531,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 31,
+            "y": 40,
+            "z": 31
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 532,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 32,
+            "y": 40,
+            "z": 32
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 533,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 33,
+            "y": 40,
+            "z": 33
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 534,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 34,
+            "y": 40,
+            "z": 34
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 535,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 35,
+            "y": 40,
+            "z": 35
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 536,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 36,
+            "y": 40,
+            "z": 36
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 537,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 37,
+            "y": 40,
+            "z": 37
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 538,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 38,
+            "y": 40,
+            "z": 38
+          }
+        },
+        {
+          "entityType": "netSegment",
+          "id": 900,
+          "prefab": "Basic Road",
+          "displayName": "Street",
+          "problems": "DespawnStuck",
+          "problemNames": [
+            "DespawnStuck"
+          ],
+          "isMajor": true,
+          "isFatal": false,
+          "position": {
+            "x": 0,
+            "y": 40,
+            "z": 0
+          }
+        },
+        {
+          "entityType": "netSegment",
+          "id": 901,
+          "prefab": "Basic Road",
+          "displayName": "Street",
+          "problems": "DespawnStuck",
+          "problemNames": [
+            "DespawnStuck"
+          ],
+          "isMajor": true,
+          "isFatal": false,
+          "position": {
+            "x": 1,
+            "y": 40,
+            "z": -1
+          }
+        }
+      ]
+    },
+    "traffic": {
+      "ok": true,
+      "returned": 3,
+      "limit": 50,
+      "averageDensity": 59,
+      "lengthWeightedAverageDensity": 60,
+      "densityHistogram": {},
+      "trafficFlowPercent": 61,
+      "segments": []
+    },
+    "economy": {
+      "ok": true,
+      "aggregateTaxRates": {
+        "residential": 9,
+        "commercial": 9,
+        "industrial": 9,
+        "office": 9
+      }
+    },
+    "areas": {
+      "ok": true,
+      "gridResolution": 5,
+      "tileSize": 1920,
+      "ownedCount": 6,
+      "cash": 2505000
+    }
+  },
+  {
+    "summary": {
+      "ok": true,
+      "gameTime": "2026-10-01T09:00:00",
+      "buildIndex": 12345,
+      "simulation": {
+        "paused": false,
+        "selectedSpeed": 3,
+        "finalSpeed": 3
+      },
+      "network": {
+        "nodes": 1000,
+        "segments": 1200,
+        "lanes": 4000
+      },
+      "citizens": {
+        "count": 41805
+      },
+      "demand": {
+        "residential": 40,
+        "commercial": 30,
+        "workplace": 20
+      }
+    },
+    "transit": {
+      "ok": true,
+      "totalsByType": {
+        "Bus": {
+          "lines": 6,
+          "completeLines": 6,
+          "stops": 60,
+          "vehicles": 40,
+          "targetVehicles": 40,
+          "passengersLastWeek": 3140
+        }
+      }
+    },
+    "problems": {
+      "ok": true,
+      "total": 42,
+      "returned": 42,
+      "limit": 200,
+      "counts": {
+        "building": 42
+      },
+      "countsByProblem": {
+        "NoPower": 39,
+        "DespawnStuck": 3
+      },
+      "problems": [
+        {
+          "entityType": "building",
+          "id": 500,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 0,
+            "y": 40,
+            "z": 0
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 501,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 1,
+            "y": 40,
+            "z": 1
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 502,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 2,
+            "y": 40,
+            "z": 2
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 503,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 3,
+            "y": 40,
+            "z": 3
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 504,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 4,
+            "y": 40,
+            "z": 4
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 505,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 5,
+            "y": 40,
+            "z": 5
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 506,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 6,
+            "y": 40,
+            "z": 6
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 507,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 7,
+            "y": 40,
+            "z": 7
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 508,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 8,
+            "y": 40,
+            "z": 8
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 509,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 9,
+            "y": 40,
+            "z": 9
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 510,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 10,
+            "y": 40,
+            "z": 10
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 511,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 11,
+            "y": 40,
+            "z": 11
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 512,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 12,
+            "y": 40,
+            "z": 12
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 513,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 13,
+            "y": 40,
+            "z": 13
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 514,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 14,
+            "y": 40,
+            "z": 14
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 515,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 15,
+            "y": 40,
+            "z": 15
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 516,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 16,
+            "y": 40,
+            "z": 16
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 517,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 17,
+            "y": 40,
+            "z": 17
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 518,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 18,
+            "y": 40,
+            "z": 18
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 519,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 19,
+            "y": 40,
+            "z": 19
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 520,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 20,
+            "y": 40,
+            "z": 20
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 521,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 21,
+            "y": 40,
+            "z": 21
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 522,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 22,
+            "y": 40,
+            "z": 22
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 523,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 23,
+            "y": 40,
+            "z": 23
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 524,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 24,
+            "y": 40,
+            "z": 24
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 525,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 25,
+            "y": 40,
+            "z": 25
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 526,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 26,
+            "y": 40,
+            "z": 26
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 527,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 27,
+            "y": 40,
+            "z": 27
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 528,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 28,
+            "y": 40,
+            "z": 28
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 529,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 29,
+            "y": 40,
+            "z": 29
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 530,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 30,
+            "y": 40,
+            "z": 30
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 531,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 31,
+            "y": 40,
+            "z": 31
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 532,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 32,
+            "y": 40,
+            "z": 32
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 533,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 33,
+            "y": 40,
+            "z": 33
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 534,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 34,
+            "y": 40,
+            "z": 34
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 535,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 35,
+            "y": 40,
+            "z": 35
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 536,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 36,
+            "y": 40,
+            "z": 36
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 537,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 37,
+            "y": 40,
+            "z": 37
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 538,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 38,
+            "y": 40,
+            "z": 38
+          }
+        },
+        {
+          "entityType": "netSegment",
+          "id": 900,
+          "prefab": "Basic Road",
+          "displayName": "Street",
+          "problems": "DespawnStuck",
+          "problemNames": [
+            "DespawnStuck"
+          ],
+          "isMajor": true,
+          "isFatal": false,
+          "position": {
+            "x": 0,
+            "y": 40,
+            "z": 0
+          }
+        },
+        {
+          "entityType": "netSegment",
+          "id": 901,
+          "prefab": "Basic Road",
+          "displayName": "Street",
+          "problems": "DespawnStuck",
+          "problemNames": [
+            "DespawnStuck"
+          ],
+          "isMajor": true,
+          "isFatal": false,
+          "position": {
+            "x": 1,
+            "y": 40,
+            "z": -1
+          }
+        },
+        {
+          "entityType": "netSegment",
+          "id": 902,
+          "prefab": "Basic Road",
+          "displayName": "Street",
+          "problems": "DespawnStuck",
+          "problemNames": [
+            "DespawnStuck"
+          ],
+          "isMajor": true,
+          "isFatal": false,
+          "position": {
+            "x": 2,
+            "y": 40,
+            "z": -2
+          }
+        }
+      ]
+    },
+    "traffic": {
+      "ok": true,
+      "returned": 3,
+      "limit": 50,
+      "averageDensity": 61,
+      "lengthWeightedAverageDensity": 62,
+      "densityHistogram": {},
+      "trafficFlowPercent": 63,
+      "segments": []
+    },
+    "economy": {
+      "ok": true,
+      "aggregateTaxRates": {
+        "residential": 9,
+        "commercial": 9,
+        "industrial": 9,
+        "office": 9
+      }
+    },
+    "areas": {
+      "ok": true,
+      "gridResolution": 5,
+      "tileSize": 1920,
+      "ownedCount": 6,
+      "cash": 2515000
+    }
+  },
+  {
+    "summary": {
+      "ok": true,
+      "gameTime": "2026-10-01T09:00:00",
+      "buildIndex": 12345,
+      "simulation": {
+        "paused": false,
+        "selectedSpeed": 3,
+        "finalSpeed": 3
+      },
+      "network": {
+        "nodes": 1000,
+        "segments": 1200,
+        "lanes": 4000
+      },
+      "citizens": {
+        "count": 41815
+      },
+      "demand": {
+        "residential": 40,
+        "commercial": 30,
+        "workplace": 20
+      }
+    },
+    "transit": {
+      "ok": true,
+      "totalsByType": {
+        "Bus": {
+          "lines": 6,
+          "completeLines": 6,
+          "stops": 60,
+          "vehicles": 40,
+          "targetVehicles": 40,
+          "passengersLastWeek": 3110
+        }
+      }
+    },
+    "problems": {
+      "ok": true,
+      "total": 40,
+      "returned": 40,
+      "limit": 200,
+      "counts": {
+        "building": 40
+      },
+      "countsByProblem": {
+        "NoPower": 38,
+        "DespawnStuck": 2
+      },
+      "problems": [
+        {
+          "entityType": "building",
+          "id": 500,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 0,
+            "y": 40,
+            "z": 0
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 501,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 1,
+            "y": 40,
+            "z": 1
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 502,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 2,
+            "y": 40,
+            "z": 2
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 503,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 3,
+            "y": 40,
+            "z": 3
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 504,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 4,
+            "y": 40,
+            "z": 4
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 505,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 5,
+            "y": 40,
+            "z": 5
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 506,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 6,
+            "y": 40,
+            "z": 6
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 507,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 7,
+            "y": 40,
+            "z": 7
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 508,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 8,
+            "y": 40,
+            "z": 8
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 509,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 9,
+            "y": 40,
+            "z": 9
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 510,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 10,
+            "y": 40,
+            "z": 10
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 511,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 11,
+            "y": 40,
+            "z": 11
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 512,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 12,
+            "y": 40,
+            "z": 12
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 513,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 13,
+            "y": 40,
+            "z": 13
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 514,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 14,
+            "y": 40,
+            "z": 14
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 515,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 15,
+            "y": 40,
+            "z": 15
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 516,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 16,
+            "y": 40,
+            "z": 16
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 517,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 17,
+            "y": 40,
+            "z": 17
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 518,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 18,
+            "y": 40,
+            "z": 18
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 519,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 19,
+            "y": 40,
+            "z": 19
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 520,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 20,
+            "y": 40,
+            "z": 20
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 521,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 21,
+            "y": 40,
+            "z": 21
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 522,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 22,
+            "y": 40,
+            "z": 22
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 523,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 23,
+            "y": 40,
+            "z": 23
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 524,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 24,
+            "y": 40,
+            "z": 24
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 525,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 25,
+            "y": 40,
+            "z": 25
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 526,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 26,
+            "y": 40,
+            "z": 26
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 527,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 27,
+            "y": 40,
+            "z": 27
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 528,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 28,
+            "y": 40,
+            "z": 28
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 529,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 29,
+            "y": 40,
+            "z": 29
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 530,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 30,
+            "y": 40,
+            "z": 30
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 531,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 31,
+            "y": 40,
+            "z": 31
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 532,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 32,
+            "y": 40,
+            "z": 32
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 533,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 33,
+            "y": 40,
+            "z": 33
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 534,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 34,
+            "y": 40,
+            "z": 34
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 535,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 35,
+            "y": 40,
+            "z": 35
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 536,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 36,
+            "y": 40,
+            "z": 36
+          }
+        },
+        {
+          "entityType": "building",
+          "id": 537,
+          "prefab": "Residential Low",
+          "displayName": "House",
+          "problems": "NoPower",
+          "problemNames": [
+            "NoPower"
+          ],
+          "isMajor": false,
+          "isFatal": false,
+          "position": {
+            "x": 37,
+            "y": 40,
+            "z": 37
+          }
+        },
+        {
+          "entityType": "netSegment",
+          "id": 900,
+          "prefab": "Basic Road",
+          "displayName": "Street",
+          "problems": "DespawnStuck",
+          "problemNames": [
+            "DespawnStuck"
+          ],
+          "isMajor": true,
+          "isFatal": false,
+          "position": {
+            "x": 0,
+            "y": 40,
+            "z": 0
+          }
+        },
+        {
+          "entityType": "netSegment",
+          "id": 901,
+          "prefab": "Basic Road",
+          "displayName": "Street",
+          "problems": "DespawnStuck",
+          "problemNames": [
+            "DespawnStuck"
+          ],
+          "isMajor": true,
+          "isFatal": false,
+          "position": {
+            "x": 1,
+            "y": 40,
+            "z": -1
+          }
+        }
+      ]
+    },
+    "traffic": {
+      "ok": true,
+      "returned": 3,
+      "limit": 50,
+      "averageDensity": 60,
+      "lengthWeightedAverageDensity": 61,
+      "densityHistogram": {},
+      "trafficFlowPercent": 62,
+      "segments": []
+    },
+    "economy": {
+      "ok": true,
+      "aggregateTaxRates": {
+        "residential": 9,
+        "commercial": 9,
+        "industrial": 9,
+        "office": 9
+      }
+    },
+    "areas": {
+      "ok": true,
+      "gridResolution": 5,
+      "tileSize": 1920,
+      "ownedCount": 6,
+      "cash": 2525000
+    }
+  }
+]

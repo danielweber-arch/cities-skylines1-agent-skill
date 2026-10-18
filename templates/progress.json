@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "Copy to the repository root as progress.json. This is the pointer file the agent reads",
+    "every turn instead of re-reading the whole plan. createdEntities is the undo log: if a",
+    "phase fails verification you can bulldoze exactly what that phase made and retry without",
+    "touching anything else."
+  ],
+  "city": "<name>",
+  "save": "<save file name>",
+  "currentPhase": "P1",
+  "completedPhases": [],
+  "lastVerifiedAt": null,
+  "createdEntities": {
+    "P1": {
+      "nodes": [],
+      "segments": [],
+      "buildings": [],
+      "opIds": []
+    }
+  },
+  "acceptance": {
+    "P1": {
+      "roadAnomalies": null,
+      "zoneAnomalies": null,
+      "population": null
+    }
+  },
+  "openIssues": []
+}

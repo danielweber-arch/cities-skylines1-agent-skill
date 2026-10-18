@@ -22,6 +22,10 @@ namespace SkylinesAgentBridge
             {
                 return CommandResult.Fail("Unsupported zone: " + zoneName);
             }
+            if (!FairPlay.ZoneUnlocked(zone))
+            {
+                return CommandResult.Fail("fair play: zone " + zoneName + " is not unlocked yet (UnlockManager.Unlocked(zone) is false)");
+            }
 
             ZoneManager manager = ZoneManager.instance;
             float radiusSq = radius * radius;

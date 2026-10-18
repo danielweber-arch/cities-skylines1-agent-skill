@@ -15,7 +15,7 @@ This project uses a lightweight Git Flow model.
 
 Create feature branches from `develop` and open pull requests back into `develop`.
 
-```powershell
+```bash
 git fetch --prune origin
 git switch develop
 git pull --ff-only origin develop
@@ -24,12 +24,9 @@ git switch -c codex/feature/<short-topic>
 
 Before opening the PR, run the lightweight documentation checks:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps1
-pushd docs
-npm install
-npm run build
-popd
+```bash
+./scripts/check-doc-links.sh
+cd docs && npm install && npm run build
 ```
 
 Runtime changes should also be smoke-tested in Cities: Skylines 1 when possible.

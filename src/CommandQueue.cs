@@ -18,12 +18,22 @@ namespace SkylinesAgentBridge
                 commands.Enqueue(command);
             }
 
-            if (!command.Wait(timeoutMs))
+            try
             {
-                return CommandResult.Fail("Timed out waiting for the game thread.");
-            }
+                if (!command.Wait(timeoutMs))
+                {
+                    // Abandon rather than leave it queued: running a command whose caller has
+                    // already given up is how a retry gets applied twice.
+                    command.Abandon();
+                    return CommandResult.Fail("Timed out waiting for the game thread.");
+                }
 
-            return command.Result;
+                return command.Result;
+            }
+            finally
+            {
+                command.Release();
+            }
         }
 
         public void Process(int maxCount)
@@ -44,19 +54,38 @@ namespace SkylinesAgentBridge
                     command = commands.Dequeue();
                 }
 
-                command.Execute();
+                try
+                {
+                    if (!command.IsAbandoned)
+                    {
+                        command.Execute();
+                    }
+                }
+                finally
+                {
+                    command.Release();
+                }
+
                 processed++;
             }
         }
 
         public void Clear()
         {
+            List<QueuedCommand> drained = new List<QueuedCommand>();
+
             lock (gate)
             {
                 while (commands.Count > 0)
                 {
-                    commands.Dequeue().Cancel("Level is unloading.");
+                    drained.Add(commands.Dequeue());
                 }
+            }
+
+            for (int i = 0; i < drained.Count; i++)
+            {
+                drained[i].Cancel("Level is unloading.");
+                drained[i].Release();
             }
         }
 
@@ -65,6 +94,13 @@ namespace SkylinesAgentBridge
             private readonly Func<CommandResult> work;
             private readonly ManualResetEvent done = new ManualResetEvent(false);
             private CommandResult result;
+            private volatile bool abandoned;
+
+            // Each wait handle is an OS file descriptor and macOS ships a far lower default
+            // ulimit than Windows, so a long agent session must not leak one per request.
+            // Both the waiter and the game thread call Release(); the second one disposes,
+            // which is what makes disposal safe without another lock.
+            private int releases;
 
             public QueuedCommand(Func<CommandResult> work)
             {
@@ -74,6 +110,16 @@ namespace SkylinesAgentBridge
             public CommandResult Result
             {
                 get { return result; }
+            }
+
+            public bool IsAbandoned
+            {
+                get { return abandoned; }
+            }
+
+            public void Abandon()
+            {
+                abandoned = true;
             }
 
             public bool Wait(int timeoutMs)
@@ -101,6 +147,14 @@ namespace SkylinesAgentBridge
             {
                 result = CommandResult.Fail(message);
                 done.Set();
+            }
+
+            public void Release()
+            {
+                if (Interlocked.Increment(ref releases) == 2)
+                {
+                    ((IDisposable)done).Dispose();
+                }
             }
         }
     }

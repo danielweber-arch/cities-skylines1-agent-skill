@@ -33,17 +33,64 @@ The intended workflow is intentionally generic:
 
 Returns bridge status without requiring a loaded city.
 
+Since wave 2 it also carries a `city` block identifying the loaded city, so an
+agent can keep per-city notes apart. It is `null` when no level is loaded.
+UNVERIFIED IN GAME (compile-only, 2026-10-01).
+
+```bash
+curl -sS "http://127.0.0.1:32123/health"
+```
+
+```json
+{"ok":true,"mod":"Skylines Agent Bridge","levelLoaded":true,"port":32123,"capabilities":["composite-commands","capture","node-snapping","idempotent-ops","transit","chat"],"defaultSpacing":80,"snapDistance":8,
+ "city":{"id":"6c1f...","name":"Portville","map":"Riverrun","environment":"Europe","gameDate":"2026-10-03","population":41800,"lastSaveName":"Portville"}}
+```
+
+`city` fields (any string field is `null` when the game has none):
+
+- `id`: `SimulationMetaData.m_gameInstanceIdentifier`. The game keeps it across
+  saves of the same city, so it is the key for per-city context.
+- `name`: `m_CityName`. `map`: `m_MapName`. `environment`: `m_environment`
+  (for example `Europe`, `Sunny`, `North`, `Tropical`).
+- `gameDate`: `m_currentDateTime` as `yyyy-MM-dd` (invariant culture).
+- `population`: district 0 (the whole city) `m_populationData.m_finalCount`.
+- `lastSaveName`: the game's own last save/load name (`SavePanel.m_LastSaveName`,
+  private static, read by reflection; set by the game on every save and by the
+  load panel on load), else the last save requested through
+  `POST /commands/save` in this process, else `null`. `SimulationMetaData` has
+  no save-name field.
+
+The block is read off the game thread (the health route does not queue onto
+the simulation), so a value can be one frame stale. Size: a few hundred bytes.
+
+`enabledMods` (added 2026-10-17, UNVERIFIED IN GAME): the names of every enabled
+plugin in `PluginManager.instance.GetPluginsInfo()` (the `IUserMod.Name`, else the
+plugin folder name), including this bridge. A supervisor uses it to verify no
+gameplay mod is running. `null` if the PluginManager could not be read. Read off
+the main thread, like `city`.
+
 ## GET /state/summary
 
 Returns a small city snapshot: game time, build index, network counts, citizen count, and demand values.
+
+It also carries the same `city` block as `GET /health` (see there), placed
+right after `ok`. UNVERIFIED IN GAME (compile-only, 2026-10-01).
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/summary"
+```
+
+```json
+{"ok":true,"gameTime":"2026-10-03T08:12:00","city":{"id":"6c1f...","name":"Portville","map":"Riverrun","environment":"Europe","gameDate":"2026-10-03","population":41800,"lastSaveName":"Portville"},"buildIndex":123456,"simulation":{"paused":false,"selectedSpeed":1,"finalSpeed":1},"network":{"nodes":900,"segments":1100,"lanes":3000},"citizens":{"count":52000},"demand":{"residential":40,"commercial":20,"workplace":30}}
+```
 
 ## GET /state/demand
 
 Returns the three demand bars shown in the CS1 UI: residential, commercial,
 and workplace demand. Values are `0..100`.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/demand
+```bash
+curl -sS http://127.0.0.1:32123/state/demand
 ```
 
 ## GET /state/chirps
@@ -53,8 +100,8 @@ sender name, sender id, text, message type, and message metadata when available.
 This is useful for reading citizen feedback such as housing demand, tax,
 traffic, service, and city satisfaction comments without OCR.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/chirps?limit=50"
+```bash
+curl -sS "http://127.0.0.1:32123/state/chirps?limit=50"
 ```
 
 ## GET /state/zones
@@ -63,8 +110,8 @@ Returns zoning cell counts and approximate area by zone type. CS1 zoning cells
 are reported as 8m x 8m cells, so `areaSquareMeters` is approximate but useful
 for comparing residential, commercial, industrial, office, and unzoned area.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/zones
+```bash
+curl -sS http://127.0.0.1:32123/state/zones
 ```
 
 ## GET /state/growables
@@ -74,9 +121,131 @@ buildings with service, sub-service, footprint size, position, active/abandoned
 state, and problem flags. Use this before zoning to avoid painting over already
 developed blocks.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/growables?limit=500"
+```bash
+curl -sS "http://127.0.0.1:32123/state/growables?limit=500"
 ```
+
+## GET /state/terrain
+
+Samples terrain and water height at one or more points. Use this before building
+to check whether a planned road, track, path, or building footprint is over
+water, since the build endpoints below refuse that automatically.
+
+Give either a single point or a batch, up to 64 points:
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/terrain?x=500&z=-200"
+curl -sS "http://127.0.0.1:32123/state/terrain?points=0,0;500,-200;1000,400"
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "count": 2,
+  "samples": [
+    { "x": 0, "z": 0, "terrainHeight": 42, "waterHeight": 42, "hasWater": false, "waterDepth": 0, "shoreDistance": 18.4, "shoreWaterHeight": 40.1 },
+    { "x": 500, "z": -200, "terrainHeight": 30, "waterHeight": 35.5, "hasWater": true, "waterDepth": 5.5, "shoreDistance": 0, "shoreWaterHeight": 35.5 }
+  ]
+}
+```
+
+`terrainHeight` is the water-free ground height; `waterHeight` is the surface
+height and equals `terrainHeight` when dry. `waterDepth` is
+`max(0, waterHeight - terrainHeight)`. `shoreDistance` and `shoreWaterHeight`
+come from the nearest shore within 100 m, or `null` if none is that close.
+400 on bad input (neither `x`/`z` nor `points`, or more than 64 points); 409
+when no city is loaded, like every other `/state` route.
+
+**The water surface is not stable.** It fluctuates by several metres within a
+minute at a single point, so a sample is a snapshot, not a fixed elevation.
+The water guard below uses the game's own `hasWater` flag rather than a height
+comparison, for exactly this reason.
+
+A ground endpoint is one with `|elevation| >= 1 m` treated as elevated; below
+1 m counts as ground, because `FindOrCreateNode` rounds any non-zero elevation
+up to 1 m. Besides the two endpoints, the guard samples along the centreline
+every 8 m and checks the existing node a ground endpoint would snap to, not
+just the raw requested point.
+
+`allowWater` is accepted on raw HTTP request bodies for a human-run script
+only; it is not exposed through any MCP tool (see Water guard below). A
+refusal is HTTP 500 with `ok:false` and the error string, and carries no
+`waterCheck` field.
+
+## GET /state/terrain/grid
+
+A compact character map of a square area: where ground pieces fit, where it is
+steep, where the water and the shore are, and an indicative flow per water
+body. One call replaces dozens of `/state/terrain` samples when planning a
+district. UNVERIFIED IN GAME (compile-only, 2026-10-01).
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/terrain/grid?x=0&z=0&radius=512&cell=64"
+curl -sS "http://127.0.0.1:32123/state/terrain/grid?x=1200&z=-300&radius=2048&cell=64&steep=6"
+```
+
+Query parameters:
+
+| Name | Default | Limits | Meaning |
+|------|---------|--------|---------|
+| `x`, `z` | required | | grid centre (m) |
+| `radius` | 512 | > 0, max 2048 | half the side of the square (m) |
+| `cell` | 64 | min 16 | cell size (m) |
+| `steep` | 8 | > 0 | grade (%) above which a dry cell is `^` |
+
+Cells per side `N = ceil(2*radius/cell)`. `N > 64` is a 400 ("reduce radius or
+raise cell"); so is a missing `x`/`z` or an out-of-range value. 409 when no
+city is loaded, like every other `/state` route. Runs on the game thread.
+
+Response (compact, numbers rounded to 1 decimal):
+
+```json
+{"ok":true,"center":{"x":0.0,"z":0.0},"radius":512.0,"cell":64.0,"cols":16,"rowCount":16,
+ "origin":{"x":-512.0,"z":-512.0},"rowOrder":"row 0 = north (max z), col 0 = west (min x); char (r,c) centre = origin + ((c+0.5)*cell, 2*radius-(r+0.5)*cell)",
+ "legend":{".":"dry, grade <= 8.0%","^":"dry, grade > 8.0%","~":"water (all 5 samples)","?":"mixed shore (some samples wet)"},
+ "rows":["......~~~~......","....?~~~~~?....."],
+ "minHeight":12.3,"maxHeight":88.0,"counts":{"dry":200,"steep":10,"water":40,"mixed":6},
+ "flow":[{"id":1,"cells":40,"sampled":40,"bbox":{"minX":-96.0,"maxX":224.0,"minZ":-160.0,"maxZ":96.0},"meanVelocity":{"x":0.2,"z":-1.1},"speed":1.1,"still":false}],
+ "flowNote":"instantaneous surface velocity, indicative only; a bay or lake reads still and sewage there reaches intakes; speed = mean of per-cell speeds; still = speed < 0.1 (game water-sim units)",
+ "flowTruncated":0}
+```
+
+(`rows` is shortened above; a real response has `rowCount` strings of `cols`
+characters.) Per flow region, `sampled` is how many of its cells returned a
+water-simulation sample, `bbox` is the region's cell extent (used by the plan
+checker's sewage rule to decide which region a facility sits on), `speed` is
+the mean of the per-cell speeds (not the length of the mean vector, so two
+opposing currents do not read as still), and `still` is `null` when no cell
+could be sampled: unknown is not still.
+
+How each cell is classified: 5 sub-samples (the cell centre and its 4
+corners), each tested with the same water test the build guard uses
+(`WaterGuard.PointHasWater`: the game's `hasWater` block flag, or a surface
+more than 5 cm above the terrain; never a fixed height threshold).
+
+- `~`: all 5 samples wet.
+- `?`: some wet, some dry (shore).
+- `^`: none wet, and the steepest grade between the centre and a corner
+  (height difference over the half-diagonal, water-free terrain height) is
+  above `steep` %.
+- `.`: none wet, grade within `steep`. Only `.` is buildable for ground pieces.
+
+`minHeight`/`maxHeight` are the water-free terrain heights over all samples.
+
+`flow`: each 4-connected region of `~` cells, largest first, at most 8
+(`flowTruncated` counts the rest). `meanVelocity` is the mean of
+`TerrainManager.SampleWaterData` velocity at each cell centre (that call takes
+the water simulation's `BeginRead`/`EndRead` lock itself). The unit is the
+game's water-simulation velocity (an int16 cell velocity scaled by about
+1/4369), not calibrated m/s. `still` is `speed < 0.1` in that unit. It is an
+instantaneous reading and indicative only: a bay or lake reads still, and
+sewage released there reaches water intakes. The water surface itself moves
+several metres a minute, so the grid is a snapshot too.
+
+Worst case: 64 x 64 cells, 8 flow regions, about 5.7 KB (about 1.4K tokens).
+Cost: `N*N*5` terrain samples plus one water-data sample per `~` cell.
 
 ## GET /prefabs/roads
 
@@ -90,6 +259,11 @@ Returns loaded network prefabs. Optional service filter:
 GET /prefabs/networks?service=Water
 ```
 
+Each entry has `name`, `displayName`, `service`, `subService`, `ai` (the `NetAI` class name),
+`connectionClass` and `intersectClass` (`"Service/SubService/Layer"` or `null`; `null` means the
+managed reference is null, the same `(object)x != null` test `NetManager.RayCast` uses). The game's
+net tool picks snap targets by these two classes (see node reuse under `build-network`).
+
 ## GET /prefabs/buildings
 
 Returns loaded building prefabs. Optional service filter:
@@ -100,6 +274,11 @@ GET /prefabs/buildings?service=Electricity
 
 Known broken/blocked building assets are omitted from this list. The current
 blocked family is `Block Services - ...`.
+
+Each entry also has `unlocked` (`UnlockManager.Unlocked(info.GetUnlockMilestone())`, the test the
+build panel uses to enable the prefab's button) and `unlockMilestone` (the milestone's name, or
+`null`). `place-building` enforces the same gate by default; pass `ignoreUnlock:true` only for an
+intentional test of a locked prefab.
 
 ## GET /state/problems
 
@@ -128,8 +307,8 @@ Returns the currently configured tax rates for zoned residential, commercial,
 industrial, and office sub-services across levels. `aggregateTaxRates` mirrors
 the six tax sliders shown in the CS1 budget UI.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/economy
+```bash
+curl -sS http://127.0.0.1:32123/state/economy
 ```
 
 ## GET /state/facilities
@@ -143,11 +322,11 @@ By default this excludes internal pipe helper buildings such as `Water Pipe
 Junction` and `Heating Pipe Junction`; pass `includeMapObjects=true` when an
 agent specifically needs raw map objects.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/facilities?limit=500
-Invoke-RestMethod http://127.0.0.1:32123/state/facilities?service=HealthCare
-Invoke-RestMethod http://127.0.0.1:32123/state/facilities?service=PoliceDepartment
-Invoke-RestMethod http://127.0.0.1:32123/state/facilities?includeMapObjects=true
+```bash
+curl -sS "http://127.0.0.1:32123/state/facilities?limit=500"
+curl -sS "http://127.0.0.1:32123/state/facilities?service=HealthCare"
+curl -sS "http://127.0.0.1:32123/state/facilities?service=PoliceDepartment"
+curl -sS "http://127.0.0.1:32123/state/facilities?includeMapObjects=true"
 ```
 
 The response includes:
@@ -188,22 +367,25 @@ Returns current network segments from CS1 data, without screenshots. Optional
 service filtering is useful for checking roads, water pipes, heating pipes, and
 power lines separately.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/networks?service=Road
-Invoke-RestMethod http://127.0.0.1:32123/state/networks?service=Water
-Invoke-RestMethod http://127.0.0.1:32123/state/networks?limit=1000
+```bash
+curl -sS "http://127.0.0.1:32123/state/networks?service=Road"
+curl -sS "http://127.0.0.1:32123/state/networks?service=Water"
+curl -sS "http://127.0.0.1:32123/state/networks?limit=1000"
 ```
 
 Each segment includes `id`, `prefab`, `service`, `subService`, `problems`,
-`name`, `startNodeId`, `endNodeId`, `start`, `end`, and `middle`.
+`name`, `startNodeId`, `endNodeId`, `start`, `end`, and `middle`. When a node is linked to a lane by
+the game's `UpdateLaneConnection` (`NetNode.m_lane`, e.g. a path end attached to a road sidewalk or a
+transit stop), the segment also carries `startNodeLaneSegmentId` / `endNodeLaneSegmentId`: the
+segment that lane belongs to.
 
 ## GET /state/road-anomalies
 
 Detects road geometry that can look connected on screen but is not actually a
 proper CS1 road graph connection.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/road-anomalies?nearMissDistance=18&shortSegmentLength=32&includeDeadEnds=true"
+```bash
+curl -sS "http://127.0.0.1:32123/state/road-anomalies?nearMissDistance=18&shortSegmentLength=32&includeDeadEnds=true"
 ```
 
 Detected anomaly types:
@@ -221,15 +403,24 @@ Each anomaly includes the affected node or segment IDs plus world coordinates,
 so an agent can call `/commands/bulldoze` or add a connector road without using
 image recognition.
 
-Helper scripts:
+Inspect, then repair within a bounded area:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\inspect-road-anomalies.ps1
+```bash
+curl -sS "http://127.0.0.1:32123/state/road-anomalies?limit=500&includeDeadEnds=false"
 
-# Remove suspicious short/dead-end service roads only in a bounded area.
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\repair-road-anomalies.ps1 `
-  -MinX 450 -MaxX 620 -MinZ 90 -MaxZ 250
+# Bulldoze a specific offender, then rebuild the connection properly.
+curl -sS -X POST http://127.0.0.1:32123/commands/bulldoze \
+  -H "Content-Type: application/json" \
+  -d '{"entityType":"netSegment","id":21778,"keepNodes":false}'
+
+curl -sS -X POST http://127.0.0.1:32123/commands/connect \
+  -H "Content-Type: application/json" \
+  -d '{"from":{"x":512,"z":-88},"toService":"Road","maxDistance":200}'
 ```
+
+The bash scripts in `scripts/` wrap these endpoints (`inspect-road-anomalies.sh` prints
+repair hints, `repair-road-anomalies.sh` bulldozes stubs in a bounding box); the `.ps1` files
+are the legacy Windows originals.
 
 ## GET /state/external-connections
 
@@ -238,8 +429,8 @@ nodes. This is useful when a city visually has highways nearby but no outside
 cars enter because the local road graph is still separate from the highway
 network.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/external-connections?limit=50"
+```bash
+curl -sS "http://127.0.0.1:32123/state/external-connections?limit=50"
 ```
 
 The response includes `cityConnectedToOutside`,
@@ -252,8 +443,8 @@ Detects service buildings whose footprint intersects a road segment. This is
 for API-side QA when a building appears to be placed through a road, without
 using screenshots.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/building-anomalies?limit=200
+```bash
+curl -sS "http://127.0.0.1:32123/state/building-anomalies?limit=200"
 ```
 
 ## GET /state/zone-anomalies
@@ -262,8 +453,8 @@ Detects mottled zoning from CS1 zone blocks without using screenshots. This is
 useful when circular or overlapping zone paint leaves residential, commercial,
 industrial, office, and unzoned cells mixed inside the same block.
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:32123/state/zone-anomalies?limit=200&includeUnzonedHoles=true"
+```bash
+curl -sS "http://127.0.0.1:32123/state/zone-anomalies?limit=200&includeUnzonedHoles=true"
 ```
 
 Detected anomaly types:
@@ -304,9 +495,243 @@ Response:
 
 When `dryRun` is `false`, the mod creates two nodes and one segment with `NetManager`.
 
+Each point may carry an optional `elevation` in metres above the terrain (negative puts it below
+the terrain), for example `"start": {"x": 0, "z": 0, "elevation": 12}`. Use it with elevated or
+tunnel prefabs such as `Train Track Elevated`. New nodes store the height in `NetNode.m_elevation`.
+Snapping onto an existing node ignores height, and no pillars are placed. `dryRun` reports the
+resulting `startY` and `endY`.
+
+**Node reuse.** An endpoint within the snap distance of an existing node reuses it when the node is
+the same prefab, both are roads, or both share service, sub-service and layer. A ground pedestrian
+path (`PedestrianPathAI`) may also end on a road node when the game's own net tool would snap it
+there (`NetTool.MakeControlPoint` -> `NetManager.RayCast` node filter: the classes match directly,
+through the road's `intersectClass`, or through the path's `intersectClass` with
+`CanIntersect`, plus both `CanConnect` checks). **For the vanilla prefabs this never happens, and
+that is the game's rule:** every `Pedestrian*` prefab is `Beautification/BeautificationParks/Default`
+and every road `Road/None/Default`, all with a null `intersectClass` (see `GET /prefabs/networks`),
+so the net tool's raycast never returns a road node or road segment for a path. The rule stays for
+modded paths that set an `intersectClass`.
+
+**Paths and roads.** In the game a path never shares a node with a road and never splits a road
+segment. A path drawn onto a road is refused by `NetTool.CreateNode` as a collision (roads are a
+public service and not auto-removable). Paths reach roads through a **lane connection** instead:
+`PedestrianPathAI.UpdateLaneConnection` links a path node to the nearest road pedestrian (sidewalk)
+lane within 16.5 m for a dead-end node (8 m otherwise), on the simulation step after the node is
+built. `GET /state/networks` shows it as `startNodeLaneSegmentId` / `endNodeLaneSegmentId`.
+
+So `build-network` refuses a surface path (`PedestrianPathAI`, not underground, no
+`intersectClass`, both endpoints below 5 m `elevation`) whose straight line comes closer to a surface
+road's centre line (`RoadAI`, nodes not underground) than that road's `m_halfWidth`, sampled every
+0.5 m (endpoints exactly). The check runs before `dryRun` returns. Response (illustrative values):
+
+```json
+{
+  "ok": false,
+  "error": "Pedestrian Pavement runs onto road segment 25831 (Basic Road) at ...",
+  "reason": "pathOnRoad",
+  "roadSegmentId": 25831,
+  "roadPrefab": "Basic Road",
+  "overlapAt": { "x": 1473.5, "z": 829.69 },
+  "distanceFromCentre": 0,
+  "roadHalfWidth": 8,
+  "suggestedStart": null,
+  "suggestedEnd": { "x": 1473.5, "z": 839.19 }
+}
+```
+
+`suggestedStart` / `suggestedEnd` are given for an endpoint that lies inside a road: the first point
+1 m clear of every surface road when walking back along the path. Build to that point; if the road
+has sidewalks (pedestrian lanes; highways have none) its dead-end node then lane-connects to the
+nearest one. The test is a centre-line approximation of the game's
+collision test (it ignores the path's own width, and a corner clipped between two samples can slip
+through). To cross a road use elevated or tunnel pieces.
+`"allowRoadOverlap": true` skips the check and builds the old way (an unjoined path node on the road,
+geometry the game's tool cannot make). If both path endpoints land on the two nodes of one existing
+road segment (modded paths only), nothing is built and the call fails naming that segment.
+
 ## POST /commands/build-road
 
 Compatibility alias for `/commands/build-network`.
+
+## POST /commands/build-grid
+
+Builds a whole rectangular road lattice: `(cols+1) x (rows+1)` nodes, then every segment
+between them. Nodes are created first and segments second — interleaving them lets a segment
+be created against a node a later snap would have merged away.
+
+Endpoints within `snapDistance` (default 8m) of an existing node reuse it, so the grid joins
+the existing network as real intersections rather than crossings.
+
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/build-grid \
+  -H "Content-Type: application/json" \
+  -d '{"roadPrefab":"Basic Road","origin":{"x":200,"z":-300},
+       "cols":6,"rows":4,"spacing":80,"rotationDegrees":0,"opId":"grid-downtown-01"}'
+```
+
+| field | default | notes |
+|---|---|---|
+| `roadPrefab` | `Basic Road` | must match a name from `/prefabs/roads` |
+| `origin` | `{0,0}` | lattice corner; cells grow toward +x and +z |
+| `cols`, `rows` | 4 | `cols * rows` must be <= 400 |
+| `spacing` | 80 | metres, 32..256 |
+| `rotationDegrees` | 0 | rotates the lattice about `origin` |
+| `snapDistance` | 8 | node reuse radius, 0..64 |
+| `opId` | none | idempotency key — a retry replays instead of rebuilding |
+| `dryRun` | false | returns the plan and `blockCenters` without building |
+
+Returns `nodeIds`, `createdNodeIds`, `reusedNodes`, `segmentIds`, `skippedSegments`, `bbox`,
+and `blockCenters`. `blockCenters` is the payoff: the coordinate of every city block, ready to
+pass straight to `/commands/set-zone`.
+
+**Why 80m.** CS1 zoning cells are 8m and zoneable depth is 4 cells (32m) per side, so 80m of
+spacing fills the block from both sides with 16m left for the road. 100m leaves an unzoneable
+dead strip down the middle of every block.
+
+Verify afterwards — a correct build reports zero:
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/road-anomalies?limit=500&includeDeadEnds=false"
+```
+
+## POST /commands/build-neighborhood
+
+Composes grid + connection + zoning. The connection runs before zoning, so a failure to reach
+the road network rolls the grid back rather than leaving a zoned orphan island.
+
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/build-neighborhood \
+  -H "Content-Type: application/json" \
+  -d '{"roadPrefab":"Basic Road","center":{"x":400,"z":200},"radiusOrCols":5,
+       "connectTo":{"x":380,"z":90},
+       "zoneMix":{"ResidentialLow":0.7,"CommercialLow":0.3},
+       "commercialPlacement":"perimeter","opId":"hood-north-01"}'
+```
+
+Same fields as `build-grid`, except `center` names the middle of the neighborhood rather than
+a corner, plus:
+
+| field | default | notes |
+|---|---|---|
+| `radiusOrCols` | 4 | shorthand for a square neighborhood; `cols`/`rows` override it |
+| `connectTo` | none | a point on an existing road; omit only if the grid already overlaps the network |
+| `connectMaxDistance` | 400 | search radius for `connectTo` |
+| `zoneMix` | required | zone name to relative weight, normalised |
+| `commercialPlacement` | `perimeter` | `perimeter`, `core`, or `corners` |
+| `preserveOccupied` | true | passed through to zoning |
+| `zoneRadius` | `spacing/2` | paint radius per block |
+
+`cols * rows` is capped at 144 here rather than 400, because zoning every block is the
+expensive part.
+
+Valid `zoneMix` keys, exactly: `ResidentialLow`, `ResidentialHigh`, `CommercialLow`,
+`CommercialHigh`, `Industrial`, `Office`, `Unzoned`. CS1 has no plain `Commercial` or
+`Residential` zone; the command rejects unrecognised keys with the valid list.
+
+The minority zones are placed first, into whichever blocks the placement rule favours, and the
+heaviest share fills the rest. The result is deterministic — the same request paints the same
+blocks. Zoning failures are reported per block rather than rolled back: repainting is cheap and
+non-destructive, bulldozing a built grid is not.
+
+## POST /commands/connect
+
+Joins a point to the nearest existing network node of a service. Use it after every service
+building placement.
+
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/connect \
+  -H "Content-Type: application/json" \
+  -d '{"from":{"x":512,"z":-88},"toService":"Road","maxDistance":200,"roadPrefab":"Basic Road"}'
+```
+
+| field | default | notes |
+|---|---|---|
+| `from` | `{0,0}` | the stranded point, typically a building position |
+| `toService` | `Road` | any `ItemClass.Service` name |
+| `maxDistance` | 200 | search radius, 1..1000 |
+| `roadPrefab` | `Basic Road` | prefab for the connecting segment |
+
+`alreadyConnected:true` means the point was already on the network. That is a success, not a
+condition to retry.
+
+### Water guard
+
+`build-network`, `build-grid`, `build-neighborhood`, and `connect` (and `batch`, which forwards
+to `build-road`/`set-zone`) accept an optional body flag `allowWater` (boolean, default `false`)
+**on the raw HTTP body only**, for a human-run script against the bridge directly. No MCP tool
+exposes `allowWater`; an LLM agent driving the city through `cs1_*` tools cannot opt out of this
+guard. Without it, the bridge refuses to create a ground road, train track, metro track, or
+pedestrian path whose endpoint or centreline is over water. A ground endpoint is one with
+`|elevation| >= 1 m` treated as elevated; below 1 m counts as ground, because `FindOrCreateNode`
+rounds any non-zero elevation up to 1 m. The error starts with `Cannot build on water:` and tells
+you to either build elevated (an elevated or bridge prefab plus `elevation` on both points) or
+pass `allowWater:true` on the raw body for a deliberate over-water build. `dryRun` runs the same
+check, so a dry run also reports the refusal. Besides the two endpoints, the guard samples along
+the centreline every 8 m and checks the existing node a ground endpoint would snap to.
+
+Exempt automatically, regardless of `allowWater`: `RoadBridgeAI`/`TrainTrackBridgeAI`/
+`MetroTrackBridgeAI` bridge pieces, `DamAI`, any `NetAI` with `BuildOnWater()` or
+`IsUnderground()` true (ship/ferry paths, tunnels), and every `NetAI` that is not
+`RoadBaseAI`/`TrainTrackBaseAI`/`MetroTrackBaseAI`/`PedestrianPathAI` (pipes, power lines, quays,
+canals, flood walls, pedestrian bridges).
+
+Check before you build with `GET /state/terrain` (above): any sampled point with `hasWater:true`
+is out of bounds for a ground build.
+
+A refusal is HTTP 500 with `ok:false` and the error string described above, and carries no
+`waterCheck` field. On success, responses from the network builders carry a `waterCheck` object:
+
+```json
+{ "checked": true, "onWater": false, "points": [{ "x": 0, "z": 0, "terrainHeight": 42, "waterHeight": 42 }] }
+```
+
+for `build-network`/`connect`, or
+
+```json
+{ "checked": true, "onWater": false, "nodesChecked": 25, "segmentsChecked": 40 }
+```
+
+for `build-grid`/`build-neighborhood`, or `{ "checked": false, "reason": "..." }` when the prefab
+is exempt or `allowWater` was passed.
+
+`batch` runs its commands sequentially, not atomically: `src/BatchCommands.cs` defaults
+`stopOnError` to `true` (`bool stopOnError = JsonUtil.GetBool(body, "stopOnError", true);`), so a
+water-guard refusal stops the batch there, but every earlier item that already succeeded stays
+built.
+
+## GET /capture
+
+Renders an orthographic top-down view into an off-screen texture and returns `image/png`.
+Deliberately not the player's camera: the agent gets a deterministic frame of a named area, and
+the human's view does not move as a side effect.
+
+```bash
+curl -sS "http://127.0.0.1:32123/capture?x=400&z=200&size=1200&pixels=1024&mode=None" -o review.png
+```
+
+| query | default | notes |
+|---|---|---|
+| `x`, `z` | 0 | world centre of the view |
+| `size` | 1000 | metres covered edge to edge |
+| `pixels` | 1024 | square resolution, capped at 1024 |
+| `mode` | `None` | CS1 `InfoManager.InfoMode` name |
+| `settleFrames` | 8 | frames to wait after switching overlay |
+| `allowBlank` | false | return the image even if it rendered as one flat colour |
+
+Response headers `X-Bridge-Info-Mode` and `X-Bridge-Distinct-Colors` report the overlay that
+was actually used and how varied the output was.
+
+Switching info view is not instantaneous in CS1 — the overlay fades in over several frames — so
+a capture is a state machine driven from the game thread across frames, not a single call. The
+previous overlay is always restored.
+
+Useful modes: `None` (plain view, and the one that shows zoning colours), `Traffic`, `Water`,
+`Electricity`, `LandValue`, `Pollution`, `NoisePollution`, `Health`, `Happiness`, `Density`,
+`Garbage`, `Education`, `TerrainHeight`, `Transport`. CS1 has no `Zone` overlay; the name is
+accepted and resolves to `None`.
+
+A response reporting a single flat colour means the off-screen camera did not pick up the
+scene. That is surfaced as an error rather than a valid PNG of nothing.
 
 ## POST /commands/set-zone
 
@@ -375,9 +800,107 @@ Request:
   "dryRun": true,
   "buildingPrefab": "Wind Turbine",
   "position": { "x": 300, "z": 200 },
-  "angleDegrees": 0
+  "angleDegrees": 0,
+  "ignoreUnlock": false
 }
 ```
+
+Locked prefabs fail before placement. A dry run or live call with `ignoreUnlock:true` reports
+`unlockIgnored:true` when it bypassed a locked milestone. The endpoint still does not charge the
+construction cost; the validated response reports `constructionCost` so a future cost-aware
+caller can make that decision explicitly.
+
+### Placement validation (`"validate"`)
+
+Without validation, `place-building` creates the building exactly where it is told
+through `BuildingManager.CreateBuilding`, and a dry run only checks that the prefab
+exists and passes the water guard below. That still skips everything else the
+in-game building tool does: no shoreline snap, no harbor height rule, no
+dock-to-ship-lane check, no collision test. A harbor placed that way can sit on
+dry land with a dock that never reaches a ship lane, unless `"validate": true` is
+also set.
+
+`"validate": true` runs the same checks as the game's `BuildingTool.SimulationStep`
+on the **simulation thread** (`SimulationManager.AddAction`), then places the
+building at the **adjusted** position and angle:
+
+- Shoreline and ShorelineOrGround prefabs (harbors, cargo harbors): `BuildingTool.SnapToCanal`
+  (40 m), then `TerrainManager.GetShorePos` twice within 50 m of `position`, offset
+  by the prefab's `m_placementOffset`; the angle comes from the shore direction, so
+  `angleDegrees` is ignored. Then `info.m_buildingAI.CheckBuildPosition(0, ref pos,
+  ref angle, waterHeight, elevation, ref connectionSegment, out _, out cost)`, and
+  `BuildingTool.CheckSpace(..., test: true, ...)` for collisions (test mode, so
+  nothing is released). For `HarborAI` this includes the rule `position.y - waterHeight
+  <= 32` (else `HeightTooHigh`) and `ShipDockAI.FindConnectionPath` + `TerrainManager.HasWater`
+  on the dock-to-lane line (else `CannotConnect`).
+- Other placement modes: terrain height at `position`, then `CheckBuildPosition`,
+  `CheckSpace` and the tool's slope rule (`maxY - minY > m_maxHeightOffset` gives
+  `SlopeTooSteep`). The zone-grid snap of Roadside growables is not reproduced.
+- Always: `BuildingManager.CheckLimits()` (else `TooManyObjects`).
+
+Validation is **on by default** for Shoreline and ShorelineOrGround prefabs, and
+off for everything else. Pass `"validate": false` to force the old unchecked path,
+or `"validate": true` for any prefab. Optional `"elevation"` (default 0) is the
+tool's elevation step for elevated stations.
+
+Put `position` within about 50 m of the water's edge on the side you want. With
+`"dryRun": true` nothing is placed and the response reports:
+
+```json
+{
+  "ok": true, "dryRun": true, "buildingPrefab": "Harbor",
+  "validated": true, "placementMode": "Shoreline", "branch": "shore",
+  "requested": { "x": 4300, "y": 0, "z": -1400 },
+  "position":  { "x": 4312.5, "y": 61.2, "z": -1388.0 },
+  "snapDistance": 19.1, "angleDegrees": 131.6,
+  "shoreFound": true, "canalSnap": false,
+  "waterHeight": 55.0, "heightAboveWater": 6.2,
+  "connection": { "a": { "x": 0, "y": 0, "z": 0 }, "b": { "x": 0, "y": 0, "z": 0 } },
+  "constructionCost": 0,
+  "toolErrors": [], "subBuildings": 0, "canPlace": true
+}
+```
+
+(Values illustrative.) `toolErrors` are `ToolBase.ToolErrors` names, for example
+`ShoreNotFound`, `HeightTooHigh`, `CannotConnect`, `ObjectCollision`. `connection`
+is the dock-to-ship-lane segment `CheckBuildPosition` found (null when it found
+none). `branch` is `canal`, `shore`, `shore-lost`, `no-shore`, `ground-fallback`
+or `ground`. A real call (`dryRun` false) with any tool error places nothing and
+returns `ok:false` with the same fields. On success it returns `buildingId` plus
+the same fields, and `position`/`angleDegrees` are where the building actually went.
+
+Prefabs with sub-buildings (for example `Harbor02`, the Harbor-Bus Hub) are
+refused on a real validated call: `BuildingManager.CreateBuilding` does not create
+sub-buildings (the game tool adds them one by one), so the result would be a
+partial building. The dry run still reports the check, with `subBuildings` > 0.
+
+If the simulation thread does not pick the job up within 10 s, or has not reached
+the create step 30 s after that, the job is abandoned and cannot place anything
+later; the response then says nothing was changed.
+
+Not checked: money (`NotEnoughMoney`), unlock/milestone state, sub-building
+positions (`CheckSubBuildingPosition`), and the
+`CanBeBuiltOnlyOnce` monument rule beyond what `CheckBuildPosition` itself reports.
+`CheckBuildPosition` can show or hide the game's tutorial placement hints, as
+hovering the tool does. `GET /prefabs/buildings` lists each prefab's
+`placementMode` and `ai` so you can tell which prefabs validate by default.
+
+### Water guard
+
+`place-building` and `move-building` accept the same `allowWater` (boolean, default `false`) body
+flag as the network builders, **on the raw HTTP body only**. No MCP tool exposes it, so an LLM
+agent cannot opt out. Without it, the bridge refuses to place or move a building whose footprint
+touches water, with an error starting `Cannot build on water:` that tells you to pass
+`allowWater:true` on the raw body for a deliberate over-water build. `dryRun` runs the same check.
+A refusal is HTTP 500 with `ok:false` and the error string, and carries no `waterCheck` field.
+
+The footprint is sampled on a grid at most 8 m apart over the whole rotated footprint: edges and
+interior, not just the four corners.
+
+Exempt automatically: buildings with placement mode `Shoreline`, `ShorelineOrGround`, or
+`OnWater` (harbors, dams, offshore turbines), which keep the existing `validate` path described
+above instead of the flat water guard. For every other prefab, check footprint points first with
+`GET /state/terrain`.
 
 ## POST /commands/move-building
 
@@ -405,13 +928,16 @@ Turns an existing building on or off by id.
 }
 ```
 
+The change is applied on the simulation thread through the building AI's production-rate setter.
+Re-read `/state/facilities` after a simulation step to confirm the `active` flag and problem list.
+
 ## POST /commands/disable-blocked-assets
 
 Disables known broken assets in CS1's package asset state so the game should not
 use them. The current blocked family is `Block Services - ...`.
 
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:32123/commands/disable-blocked-assets
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/disable-blocked-assets
 ```
 
 ## POST /commands/bulldoze
@@ -419,14 +945,10 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:32123/commands/disable-bloc
 Deletes a problem entity by API. Useful for agent-side repair loops after
 reading `/state/problems`.
 
-```powershell
-$body = @{
-  entityType = "netSegment"
-  id = 21778
-  keepNodes = $false
-} | ConvertTo-Json
-
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:32123/commands/bulldoze -Body $body -ContentType "application/json"
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/bulldoze \
+  -H "Content-Type: application/json" \
+  -d '{"entityType":"netSegment","id":21778,"keepNodes":false}'
 ```
 
 Supported `entityType` values:
@@ -441,19 +963,21 @@ Requests an in-game save through CS1's `SavePanel.SaveGame`, the same code path
 used by the normal UI save button. The game writes the `.crp` package
 asynchronously, so poll `/state/saves` until the returned file appears.
 
-```powershell
-$body = @{ name = "AgentAutoSave-20260512-1900" } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:32123/commands/save -Body $body -ContentType "application/json"
+```bash
+curl -sS -X POST http://127.0.0.1:32123/commands/save \
+  -H "Content-Type: application/json" \
+  -d '{"name":"AgentAutoSave-20260512-1900"}'
 
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\save-city.ps1 -Name AgentAutoSave-test
+# The file appears a few seconds later; poll until it exists.
+curl -sS http://127.0.0.1:32123/state/saves
 ```
 
 ## GET /state/saves
 
 Lists local `.crp` saves with paths, timestamps, and file sizes.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:32123/state/saves
+```bash
+curl -sS http://127.0.0.1:32123/state/saves
 ```
 
 ## POST /commands/set-simulation-speed
@@ -518,3 +1042,597 @@ Supported command types:
 - `set-zone`
 
 If an item does not include `dryRun`, it inherits the batch-level `dryRun` value. Batches are limited to 32 commands.
+
+## Game lifecycle
+
+UNVERIFIED IN GAME. Added 2026-10-17 and compiled against the installed
+Assembly-CSharp, but never run against a live game. Everything below describes
+what the code does, not observed behaviour.
+
+These three routes let an unattended loop start a brand-new city and recover
+from a crash with no clicking. They work at the main menu (`levelLoaded:false`).
+They run on Unity's main thread through `MainThreadDispatcher`, a
+`DontDestroyOnLoad` MonoBehaviour created in `IUserMod.OnEnabled`. The in-game
+queue (`AgentBridgeThreading`) is not used here, because `SimulationManager`
+only ticks threading extensions once a level exists. The timeout is 30 s. A
+refusal or bad argument returns **409** with `{"ok":false,"error":...}`. 503
+means the dispatcher is not running.
+
+**Fair play.** Neither command enables any cheat. Both refuse when any enabled
+plugin's name or folder, normalised to lower-case letters and digits, is
+`unlimitedmoney`, `unlockall`, `unlimitedoilandore` or `unlimitedsoil` (the
+built-in mods in `Files/Mods`). The error names the mods it found. Achievements
+are set the way the game's own panels set them; the bridge does not change them.
+
+Other refusals: `LoadingManager.m_currentlyLoading` (a load is in progress),
+`SavePanel.isSaving`, and for new-game only, a city already loaded.
+
+### GET /state/maps
+
+Lists the maps the New Game panel would show. It copies `NewGamePanel.Refresh`:
+`PackageManager.FilterAssets(UserAssetType.MapMetaData)` assets that are
+enabled, `MapMetaData.isPublished`, and not `NewGamePanel.IsUnplayableNDScenarioMap`.
+`playable` / `dlcOwned` is the panel's own start-button gate,
+`SteamHelper.IsDLCOwned(NewGamePanel.GetRequiredDLCFromMapName(package, meta))`.
+
+```json
+{"ok":true,"levelLoaded":false,"count":1,"buildableAreaUnit":"...","maps":[
+ {"ref":"Green Plains.Green Plains_Data","mapName":"Green Plains","displayName":"Green Plains",
+  "assetName":"Green Plains_Data","packageName":"Green Plains","environment":"Temperate",
+  "mapThemeRef":null,"builtin":true,"workshop":false,"publishedFileId":null,
+  "requiredDlc":"None","dlcOwned":true,"playable":true,"buildableArea":25,
+  "resources":{"oil":0,"ore":0,"forest":0,"fertileLand":0,"water":0,"maxResourceAmount":0},
+  "connections":{"roadsIn":2,"roadsOut":2,"trainIn":1,"trainOut":1,"shipIn":0,"shipOut":0,"planeIn":1,"planeOut":1}}]}
+```
+
+The values above are illustrative. `ref` is `Package.Asset.fullName`.
+`buildableArea` and `resources` are the raw `MapMetaData` fields that the panel
+renders, and their units have not been checked against the panel.
+
+### POST /commands/new-game
+
+```json
+{"map":"<ref, assetName, packageName, mapName or displayName>","cityName":"Agentburg","invertTraffic":false,"dryRun":true}
+```
+
+The map is matched exactly first, then ignoring case. An ambiguous match is
+refused with the candidate refs. The command copies `NewGamePanel.OnStartNewGame`
+-> `CheckForDisasterActivation` -> `StartNewGameRoutine`, field for field:
+`m_CityName`, `m_gameInstanceIdentifier = Guid.NewGuid()`, `m_invertTraffic`
+(MetaBool True/False from `invertTraffic`, the panel checkbox, default
+unchecked), `m_disableAchievements = MetaBool.False`, `m_startingDateTime` and
+`m_currentDateTime = DateTime.Now`, `m_newGameAppVersion = BuildConfig.APPLICATION_VERSION`,
+`m_updateMode = NewGameFromMap`, `m_MapName`, and the map's own theme if it is
+installed. It then calls `LoadingManager.LoadLevel(asset, "Game", "InGame", meta, false)`.
+It refuses a map whose DLC is not owned and an empty `cityName`. `dryRun`
+resolves the map and returns the metadata it would use, without loading.
+
+Differences from clicking: the panel's two confirm modals are skipped.
+`CONFIRM_MAPTHEME_MISSING`: a missing theme is dropped, as accepting the modal
+would. `TEXTFORRANDOMDISASTERS`: the disasters setting is left as it is. The
+theme-override dropdown is not offered.
+
+Response: `{"ok":true,"dryRun":false,"map":{...},"cityName":...,"gameInstanceIdentifier":...,"invertTraffic":false,"disableAchievements":"False","newGameAppVersion":...,"updateMode":"NewGameFromMap","themeApplied":false,"message":...}`.
+It returns as soon as loading starts. Poll `/health` until `levelLoaded:true`.
+
+### POST /commands/load-save
+
+```json
+{"name":"AgentAutoSave","dryRun":true}
+```
+
+This works from the main menu or in game. The name is matched exactly against
+the LoadPanel listing name (`Package.Asset.name`), the `.crp` file name (as
+`GET /state/saves` shows it), or the package name, then ignoring case. When
+several saves match, the newest by `SaveGameMetaData.timeStamp` wins, and
+`matches` says how many there were. The command copies `LoadPanel.OnLoad` ->
+`LoadRoutine`: in game it calls `ToolsModifierControl.CloseEverything()`. It
+sets `LoadPanel.m_LastSaveName` (by reflection), `SavePanel.lastLoadedName` and
+`SavePanel.lastCloudSetting`, then builds `SimulationMetaData`:
+`m_CityName = cityName`, `m_updateMode = LoadGame`,
+`m_environment = LoadPanel.m_forceEnvironment`, and
+`m_disableAchievements = True` for a workshop save, as the game does. It applies
+the save's theme if installed and calls `LoadLevel(asset, "Game", "InGame", meta, false)`.
+Only saves the PackageManager knows are found; the extra `SaveHelper.GetSavesOnDisk()`
+pass of `LoadPanel.Refresh` is not copied. `GET /state/saves` now also answers at
+the main menu.
+
+Response: `{"ok":true,"dryRun":false,"name":...,"ref":...,"file":...,"matches":1,"cityName":...,"timeStamp":...,"workshop":false,"themeApplied":false,"fromLevelLoaded":false,"message":...}`.
+
+MCP tools: `cs1_state_maps` (filters `playableOnly` (default true),
+`builtinOnly`, `environment`), `cs1_new_game`, `cs1_load_save`
+(`mcp-server/src/tools/lifecycle.ts`).
+
+## Map tiles
+
+The map is a 5x5 grid (`GameAreaManager.AREAGRID_RESOLUTION`) of 1920 m tiles (`AREAGRID_CELL_SIZE`). Tile `x,z` covers world `[(x - 2.5) * 1920, (x - 1.5) * 1920]` on each axis (`GameAreaManager.GetAreaBounds`), so the grid runs from -4800 to 4800 and the default start tile is 2,2.
+
+The game allows a tile to be bought (`GameAreaManager.CanUnlock`) when all of these hold:
+
+- it is inside the grid and not owned;
+- it shares an edge with an owned tile;
+- owned tiles (`m_areaCount`) are below the cap `MaxAreaCount` (the field `m_maxAreaCount`, defaulted to 9; mods raise it through `IAreas.maxAreaCount`, clamped to 1..25; it is not saved, and a load resets it to max(9, owned));
+- the next area milestone is reached: `UnlockManager.Unlocked(m_areaCount)` checks `m_AreaMilestones[m_areaCount]` (clamped to the last one);
+- no mod's `IAreasExtension.OnCanUnlockArea` hook refuses it.
+
+Prices are in game money units (cents), as `GameAreaManager.CalculateTilePrice` returns them; `priceDisplay` is the value the area panel shows (price / 100). A tile's price depends on how many tiles are already owned, so it changes after every purchase.
+
+### GET /state/areas
+
+Every tile, row by row (z, then x):
+
+```json
+{"ok":true,"gridResolution":5,"tileSize":1920,"origin":{"x":-4800,"z":-4800},
+ "ownedCount":9,"maxAreaCount":9,"gridMaxAreaCount":25,"atMaxAreaCount":true,
+ "nextAreaMilestoneReached":true,"nextAreaMilestone":{"name":"...","title":"...","reached":true},
+ "purchasableCount":0,"startTile":{"tileX":2,"tileZ":2},"cash":123456789,
+ "tiles":[{"tileX":0,"tileZ":0,"index":0,"owned":false,"unlockOrder":0,"start":false,
+           "adjacentToOwned":false,"purchasable":false,
+           "bounds":{"minX":-4800,"minZ":-4800,"maxX":-2880,"maxZ":-2880},
+           "center":{"x":-3840,"z":-3840},"price":6000000,"priceDisplay":60000,"affordable":true}, ...]}
+```
+
+- `purchasable` is the game's own `CanUnlock(x, z)` with the current cap. It does not include money: `affordable` is `EconomyManager.PeekResource(LandPrice, price) == price`, the test the area panel uses to enable its Purchase button.
+- `unlockOrder` is the tile's `m_areaGrid` value: 0 for unowned, else the order it was bought in (the start tile is 1).
+- `price` is the price of buying that tile next, computed for every unowned tile with the same inputs the area panel uses (road/rail/ship/air connection surcharges, natural resources, water, flatness). `CalculateTilePrice(tile)` itself returns 0 for tiles `CanUnlock` refuses, which is why the bridge gathers the inputs itself. Owned tiles report `price: null`.
+- The numbers above show the shape only.
+
+### POST /commands/unlock-area
+
+`{ "tileX": 3, "tileZ": 2, "dryRun": true }` or `{ "x": 2500, "z": -300 }` (a world position inside the tile). `tileX`/`tileZ` must be whole numbers.
+
+- Validates owned, adjacency, cap, area milestone, money, and `CanUnlock`, then on the simulation thread does what the area panel's Purchase button does (`GameAreaTool.UnlockArea`): `CalculateTilePrice(tile)`, `EconomyManager.FetchResource(LandPrice, price, ...)`, `GameAreaManager.UnlockArea(tile)`. The bridge peeks the money first, because `FetchResource` deducts the full amount even when the city cannot cover it.
+- `ignoreMaxAreaCount: true` (alias `ignoreMilestoneLimit`) sets the cap to 25 through `IAreas.maxAreaCount` before buying, as the 25-tile mods do. It does not bypass the area milestones; the bridge never fakes milestone progress. The raised cap lasts until the city is reloaded; owned tiles stay owned. If the purchase is then refused before payment, the cap is put back.
+- A refusal returns HTTP 500 with `ok:false`, `canUnlock:false`, the reason, and the facts it checked:
+
+```json
+{"ok":false,"dryRun":true,"canUnlock":false,
+ "error":"At the maximum area count (9 of 9). Pass ignoreMaxAreaCount:true to raise the cap to 25.",
+ "tileX":3,"tileZ":2,"index":13,"owned":false,"adjacentToOwned":true,
+ "nextAreaMilestoneReached":true,"nextAreaMilestone":{...},"ownedCount":9,
+ "maxAreaCount":9,"effectiveMaxAreaCount":9,"price":6000000,"priceDisplay":60000,"affordable":true}
+```
+
+- A passing dry run returns the same facts with `ok:true`, `canUnlock:true` and `wouldRaiseMaxAreaCount`.
+- A purchase returns:
+
+```json
+{"ok":true,"dryRun":false,"unlocked":true,"tileX":3,"tileZ":2,"index":13,
+ "price":6000000,"priceDisplay":60000,"cashBefore":123456789,"cashAfter":117456789,
+ "ownedCount":10,"maxAreaCount":25,"raisedMaxAreaCount":true}
+```
+
+- If `GameAreaManager.UnlockArea` returns false after payment (its terrain detail patch failed), (its own `CanUnlock` refused, or the terrain detail patch failed), the response is `ok:false, unlocked:false` with an error; the money stays deducted, as it does with the game's own tool.
+- Confirm with `GET /state/areas`.
+
+## Public transport
+
+Read and change public transport lines, service budgets and policies, and see where the roads are congested. Every field below comes from a named game member, and the response says which one. Line and stop edits run on the command queue like every other command. They honour `dryRun` and return `ok:false` with an error rather than throwing.
+
+These endpoints have **not been exercised in a running game yet**. The member names and the stop-snapping logic were taken from the installed `Assembly-CSharp.dll` (decompiled `TransportTool`, `TransportLine`, `TransportManager`, `EconomyManager`, `DistrictManager`), and the mod compiles against them. Treat the first in-game runs as verification.
+
+### GET /state/transit
+
+Query: `type` (optional, one `TransportInfo.TransportType`: `Bus`, `Metro`, `Train`, `Ship`, `Airplane`, `Taxi`, `Tram`, `Monorail`, `CableCar`, `Trolleybus`, ...), `includeStops=true`, `limit` (lines, default and max 256).
+
+```bash
+curl "http://127.0.0.1:32123/state/transit?type=Bus&includeStops=true"
+```
+
+Response fields:
+
+- `lines[]`:
+  - Identity and state: `id`, `number` (`m_lineNumber`), `name` (`GetLineName`), `transportType`, `prefab` (the `TransportInfo` name), `vehicleType`, `subService`, `color` (`#RRGGBB`, from `GetLineColor`), `flags` (set `TransportLine.Flags` names), `complete`, `activeDay`, `activeNight`.
+  - Size and service: `stopCount`, `lengthMeters` (`m_totalLength`), `vehicleCount` (`CountVehicles`), `targetVehicleCount` (`CalculateTargetVehicleCount`, which already includes the service budget), `budget` (`m_budget`, per-line percent), `ticketPrice` (`m_ticketPrice`, cents), `averageInterval` (`m_averageInterval`), `depotBuildingId` (`m_building`).
+  - `passengers`: `residents`, `tourists`, `total` and `carOwning` come from `m_passengers.<group>.m_averageCount`, which is the weekly figure the line info panel shows. `lastPeriod` is `m_finalCount` and `current` is `m_tempCount`.
+  - `problems`: the distinct stop-node problems on the line. `LineNotConnected` means the path between two stops failed. `TooLong` means the line is too long.
+  - `stops[]` (only with `includeStops`):
+    - `index`, `nodeId`, `x`/`y`/`z`, `fixedPlatform` (`NetNode.Flags.Fixed`).
+    - `waitingPassengers`: `TransportLine.CalculatePassengerCount(stop)`, the same call the line panel's stop list makes.
+    - `nodeFinalCounter`: `NetNode.m_finalCounter`, rolled over by `TransportLineAI` every 4096 frames. Its exact meaning is not confirmed.
+    - `laneId`, `segmentId`, `stationBuildingId` (the owner of an untouchable platform segment), `problems`.
+- `totalsByType`: for each type, `lines`, `completeLines`, `stops`, `vehicles`, `targetVehicles` and `passengersLastWeek` (the sum of the lines' `m_averageCount`).
+- `cityPassengersByType`: `TransportManager.m_passengers[type]` residents and tourists (`m_averageCount`), which are the counters the Public Transport info view shows. Note that the view adds `Airplane` and `Helicopter` together.
+- `budgets`: `EconomyManager.GetBudget` day and night values for `PublicTransport` and each transit sub-service.
+- `transportPrefabs`: every loaded `TransportInfo`, with `transportType`, `vehicleType`, `defaultForType`, net and station services, `unlocked`, `unlock`, and `creatableByBridge`.
+  - `unlocked` is `UnlockManager.Unlocked(m_UnlockMilestone)`: the test the Public Transport panel uses to enable the line tool button (`GeneratedScrollPanel.CreateAssetItem`), and the one `transit-line-create` enforces. `TransportTool` itself does no unlock check.
+  - `unlock` explains it: `lineTool` (same as `unlocked`), `milestone` (`name`, `type` (the milestone class, e.g. `BuildingCountMilestone`), `title`, `passed`, `hasData`, `passedCount`, `canRelock`, `progress` (the game's localized `description`/`text`, `current`, `max`), and for a `BuildingCountMilestone` `requires` (`buildingsOf` service/sub-service, `level`, `targetCount`); for a `CombinedMilestone`, its `requirePassed`/`forbidPassed` milestones), and the `service`/`subService` of the prefab's class with `serviceUnlocked`/`subServiceUnlocked` (`UnlockManager.Unlocked(Service/SubService)`, which gate the panel and its tab). The tab's DLC special cases (`UnlockManager.Feature` gates in `PTGroupInfo.IsSubServiceUnlocked`) are not reported. Use a `name` from here as `prefab` when a type has several prefabs (ship vs ferry, airplane vs blimp).
+- `facilities[]`: every `PublicTransport` building.
+  - `id`, `prefab`, `subService`, `ai` (the AI class name), `lineType` and `secondaryLineType`, `subBuilding`, `active`, `angleDegrees`, `problems`, `position`.
+  - For depots: `maxVehicleCount` and `vehicleCount` (`DepotAI.GetVehicleCount`). For stations: `passengerCount` (`TransportStationAI.GetPassengerCount`).
+  - `facilityCount` and `facilitiesBySubService` summarise the list.
+- `modalSplit: null`. CS1 does not track a city-wide public-transport share anywhere; this was checked in `District`, `StatisticsManager` and the info panels. The bridge does not invent one.
+
+### GET /state/traffic
+
+Query: `limit` (default 50, max 2000), `minDensity` (0..100), and optionally `x`, `z`, `radius` (metres, default 500) to restrict to segments whose middle is inside that circle.
+
+Only segments whose network AI is `RoadBaseAI` are included, because only those maintain `NetSegment.m_trafficDensity` (0..100, the value the Traffic overlay colours by). Rows are sorted by density, highest first: `id`, `prefab`, `name`, `density`, `trafficBuffer` (the raw per-step accumulator), `lengthMeters`, `start`, `end`, `middle`, and `lanes` (`carLanes`, `busLanes`, `tramLanes`, `trolleybusLanes`, `pedestrianLanes`, `parkingLanes`, `lanesWithStops`, all counted from the prefab's `NetInfo.m_lanes`; a bus lane is a car lane with `LaneType.TransportVehicle`).
+
+The response also carries:
+
+- `averageDensity` (unweighted) and `lengthWeightedAverageDensity` over the matching road segments. The bridge computes both; they are not game figures.
+- `densityHistogram`.
+- `trafficFlowPercent`: `VehicleManager.m_lastTrafficFlow`, the "average traffic flow" in the Traffic info view. It is city-wide and ignores the area filter.
+
+### GET /state/segment-route-share
+
+Which vehicles' CURRENT remaining route includes one road segment at this
+instant, broken down by vehicle class and by origin/destination area. It is
+not throughput: a vehicle counts once, whether it reaches the segment in ten
+seconds or ten minutes. UNVERIFIED IN GAME (compile-only, 2026-10-01).
+
+```bash
+curl -sS "http://127.0.0.1:32123/state/segment-route-share?segment=1234"
+curl -sS "http://127.0.0.1:32123/state/segment-route-share?x=800&z=-450&radius=300&limit=20"
+```
+
+Query parameters:
+
+| Name | Default | Limits | Meaning |
+|------|---------|--------|---------|
+| `segment` | | segment id | the segment to test |
+| `x`, `z`, `radius` | radius 500 | radius > 0 | instead of `segment`: the `RoadBaseAI` segment with the highest `m_trafficDensity` whose middle is in the circle (ties to the lowest id) |
+| `limit` | 10 | 1..50 | top origin/destination pairs returned |
+| `budget` | 150000 | 1..1000000 | path units walked, across all vehicles |
+
+400 when neither `segment` nor `x`/`z` is given or the radius is not positive;
+500 with `ok:false` when the segment does not exist or no road is in the
+radius; 409 when no city is loaded. Runs on the game thread.
+
+Response:
+
+```json
+{"ok":true,"segment":{"id":1234,"prefab":"Highway","density":87,"start":{"x":812.0,"z":-460.0},"end":{"x":900.0,"z":-380.0}},
+ "meaning":"vehicles whose CURRENT remaining route includes this segment at this instant; not throughput",
+ "scanned":9000,"hopCapped":3,"totalActive":11200,"truncated":true,"sample":true,
+ "pathUnitsWalked":150000,"budget":150000,"matched":312,
+ "byClass":{"passengerCar":200,"cargoTruck":80,"transit":12,"service":10,"other(CargoTrainAI)":10},
+ "outsideToOutside":40,"fromOutside":60,"toOutside":55,
+ "topPairs":[{"from":"Downtown","to":"outside","count":30}],"pairsTotal":57,"pairsTruncated":47}
+```
+
+How it is computed:
+
+- The vehicle buffer is scanned from a random start, wrapping around. A
+  vehicle is eligible when it is `Created`, not `Deleted`, is a leading
+  vehicle (`m_leadingVehicle == 0`; trailers share the leader's route), is not
+  cargo carried inside a ship or train (`m_cargoParent == 0`), has a path
+  (`m_path != 0`) and is not `WaitingPath`. `totalActive` counts eligible
+  vehicles.
+- Each eligible vehicle's remaining path is walked from position index
+  `m_pathPositionIndex >> 1` in unit `m_path`, through the unit's
+  `m_positionCount` positions, then on to `m_nextPathUnit` from index 0
+  (the same walk the game's `TrainAI.ResetTargets` does). A walk stops when
+  the segment is found, the chain ends, or after 64 units. Every unit visited
+  counts against `budget`.
+- A vehicle whose route continues past the 64-unit cap is NOT counted as
+  scanned (`hopCapped` counts them), so a target segment beyond the cap never
+  reads as "not on the route".
+- `scanned` is the number of vehicles whose walk finished. When the budget
+  runs out the remaining vehicles are not walked: `truncated` and `sample` are
+  then `true`, and every count is a sample of the vehicles scanned (from a
+  random start), not a total.
+- `byClass` by `VehicleInfo.m_vehicleAI` type: `passengerCar`
+  (`PassengerCarAI`), `cargoTruck` (`CargoTruckAI`), `transit` (`BusAI`,
+  `TramAI`, `PassengerTrainAI` incl. metro and monorail, `TrolleybusAI`,
+  `PassengerFerryAI`, `PassengerShipAI`, `PassengerPlaneAI`,
+  `PassengerBlimpAI`, `PassengerHelicopterAI`, `CableCarAI`, `TaxiAI`),
+  `service` (fire, police, ambulance, hearse, garbage, road maintenance, post,
+  snow, disaster response, park maintenance, water truck, bank van, and their
+  helicopters), and `other(<AI class name>)` for anything else. Nothing is
+  dropped. The four main keys are always present.
+- Origin and destination area: the district name of `m_sourceBuilding` /
+  `m_targetBuilding` (`DistrictManager.GetDistrict` on the building position),
+  `outside` when that building is an outside connection
+  (`OutsideConnectionAI`), `none` when it is in no district, `unknown` when
+  the building id is 0. An unnamed district reads `district <n>`.
+- `outsideToOutside`: vehicles flagged `DummyTraffic` or with both ends
+  outside. `fromOutside` / `toOutside`: only one end outside. The three do
+  not overlap.
+- `topPairs`: the `limit` most common (from, to) pairs, ties by name.
+  `pairsTotal` distinct pairs, `pairsTruncated` the ones not listed.
+
+Worst case: about 1.5 KB at the default `limit=10`; about 5.7 KB at
+`limit=50` with long district names. Cost: up to `budget` path units walked
+on the game thread (default 150000), plus one flag check per vehicle slot
+(16384).
+
+### GET /state/policies
+
+Returns:
+
+- `cityPolicies`: the policies set in district 0 (`IsCityPolicySet`).
+- `districts[]`: `id`, `name`, and the `policies` set in that district.
+- `available[]`: every policy this game has loaded (`IsPolicyLoaded`) that `set-policy` accepts, with its `type`, `cityWide` and `unlocked` (`UnlockManager.Unlocked`).
+
+### POST /commands/transit-line-create
+
+```json
+{
+  "transportType": "Bus",
+  "stops": [{ "x": 0, "z": 0 }, { "x": 240, "z": 0 }, { "x": 240, "z": 240 }],
+  "name": "Crosstown",
+  "color": "#FF8800",
+  "budget": 100,
+  "dryRun": true
+}
+```
+
+- Give `transportType` (one of `Bus`, `Metro`, `Train`, `Ship`, `Airplane`, `Tram`, `Monorail`, `CableCar`, `Trolleybus`; this uses `TransportManager.GetTransportInfo(type)`) or `prefab` (an exact `TransportInfo` name). The prefab must be unlocked (`UnlockManager.Unlocked(m_UnlockMilestone)`, the line-tool button's test); a refusal returns `unlock` (as in `/state/transit` `transportPrefabs`) and names the milestone and its requirement.
+- `ignoreUnlock: true` skips that unlock check. Default false. The response (dry run and live) carries `unlockIgnored` (true only when the prefab was locked and the check was skipped), and a live call adds a warning. If the milestone requires a depot or station, the line has no vehicles until one exists.
+- `stops` needs 2 to 64 points, in travel order. Do not repeat the first stop: the line is closed back to it automatically. A last stop that snaps onto the first stop is dropped (`droppedDuplicateClosingStop: true`). Any other stop that snaps onto the first stop is an error.
+- Optional: `name`, `color` (`#RRGGBB`), `budget` (per-line percent, 0..500), `roadSnapDistance` (default 32, max 128), `stationSnapDistance` (default 64, max 256).
+
+**Stop snapping** is a port of `TransportTool.GetStopPosition`, the in-game line tool:
+
+- The tool raycasts under the mouse. The bridge instead gathers every segment within `roadSnapDistance` that the tool's raycast filter would accept (the prefab's net service, sub-service and layer, or its secondary net service) and every building within `stationSnapDistance` of its centre that matches the prefab's station service. It tries them nearest first, up to 64.
+- This is an **approximation**, not the tool's raycast. The tool takes the one object under a 3D camera ray and fails if that object is unsuitable. The bridge measures flat distance (for stations, to the building's pivot) and falls through to the next candidate. So a point on open ground next to a station can still snap to it, and on stacked networks at the same x/z the elevation chosen is not controlled.
+- **Road types** (Bus, Trolleybus, Tram): the stop goes on the side of the segment nearest the point, at the middle of the segment (the tool always uses lane offset 128/255). The lane must allow stops (`NetLane.Flags.Stops` must be compatible with `TransportInfo.m_stopFlag`). `fixedPlatform` is true.
+- **Station types** (Metro, Train, Monorail, Ship, Airplane, CableCar): the stop goes on one of the station building's spawn positions (`CalculateSpawnPosition` with 12 seeds). Where the prefab sets `m_avoidSameStopPlatform`, the bridge prefers the platform used by the fewest existing lines of that type; metro takes the platform nearest the point. A point on a station's own platform segment redirects to that station. `fixedPlatform` is false, as in the game.
+
+After snapping, the bridge checks that no two consecutive stops are within 1 m of each other (the rule `TransportLine.CanAddStop` enforces), then checks the line limits (`TransportManager.CheckLimits` and `NetManager.CheckLimits`). `dryRun` stops here and returns the snapped stops.
+
+**Creating the line** follows the same steps as the tool:
+
+1. `CreateLine(..., newNumber: true)`.
+2. For each stop, `CanAddStop` and then `AddStop(-1, position, fixedPlatform)`.
+3. Close the loop by adding a stop at the first stop's exact position. `AddStop` sees it is within 2.5 m, joins the last stop to the first, and sets `Complete` itself; the bridge never sets that flag.
+
+If any step fails, the whole line is removed with `ReleaseLine`.
+
+The response contains `lineId`, `line` (a summary with the stop node ids), and `stops[]`. Each stop has `requested`, `resolved` (x/y/z), `snapDistance`, `via` (`segment` or `station`), `segmentId` or `buildingId`, `fixedPlatform` and `candidatesTried`. The live response also includes the stop's `nodeId`.
+
+The paths between stops are worked out **after** the call returns. Let the simulation run, then re-read `/state/transit?includeStops=true`: a `LineNotConnected` problem on a stop means that leg failed.
+
+### POST /commands/transit-line-edit
+
+```json
+{
+  "lineId": 7,
+  "name": "Harbor Loop",
+  "color": "#00AA55",
+  "budget": 120,
+  "ticketPrice": 200,
+  "removeStopIndexes": [4, 1],
+  "moveStops": [{ "index": 0, "x": 10, "z": 20 }],
+  "addStops": [{ "x": 50, "z": 60 }, { "index": 2, "x": 70, "z": 80 }],
+  "dryRun": false
+}
+```
+
+Edits are applied in this order:
+
+1. **Removals.** Indexes refer to the current line and are applied from the highest down. An edit that would leave fewer than 2 stops is refused; delete the line instead.
+2. **Moves.** Indexes refer to the line after the removals. Each uses `CanMoveStop`, then `MoveStop`.
+3. **Adds.** Each stop is inserted before the stop at `index`, counted after the earlier edits. Omit `index` or pass -1 to append. On a complete loop, `0`, `-1` and the stop count all insert between the last stop and the first, which is how `TransportLine.AddStop` walks the loop; on an incomplete line, `0` inserts a new first stop. Each uses `CanAddStop`, then `AddStop`. Unlike the in-game tool, appending to an **incomplete station line** at its first station does not reuse the first stop and does not close the line.
+4. **Properties**: `name` (an empty string restores the generated name), `color`, `budget`, `ticketPrice` (cents).
+
+Before anything changes, every point is snapped, every index is checked, and the whole sequence is replayed on a copy of the stop list using the game's rule that a stop may not sit within 1 m of the stop before or after it. That catches, for example, two adjacent adds at the same point. The game can still refuse a later step for other reasons, and earlier steps are **not** rolled back. When that happens the response is `ok:false` with `applied[]` and the current `line`.
+
+`dryRun` reports the snapped points and a `canApply` flag for each move and add. Those flags come from `CanMoveStop` and `CanAddStop` run against the line as it is now, so when the edit includes removals, or more than one move/add, they are approximate (`canChecksExact: false`). When the checks are exact and one fails, `dryRun` returns `ok:false`.
+
+### POST /commands/transit-line-delete
+
+`{ "lineId": 7, "dryRun": false }`. Calls `TransportManager.ReleaseLine`, which removes the stops and sends the line's vehicles away. The response includes the summary of the deleted line.
+
+### POST /commands/set-service-budget
+
+`{ "service": "PublicTransport", "subService": "PublicTransportBus", "day": 120, "night": 80, "dryRun": false }`
+
+- Calls `EconomyManager.SetBudget(service, subService, value, night)`. `day` and `night` are each optional, 0..150.
+- `PublicTransport` without a `subService` cascades to every transit sub-service, just like the budget panel's parent slider. The response lists every affected sub-service.
+- A service or sub-service with no budget slider is refused.
+- `dryRun: true` with no values returns the current budget.
+
+### POST /commands/set-building-emptying
+
+`{ "id": 8062, "emptying": true }`
+
+- The info panel's Empty button for landfills and cemeteries: `BuildingAI.SetEmptying` on the simulation thread. The contents go to other facilities of the same service, so there must be spare capacity elsewhere.
+- The response gives `wasFull`, the AI type and the building flags afterwards.
+
+### POST /commands/set-policy
+
+`{ "policy": "FreeTransport", "districtId": 0, "enabled": true, "dryRun": false }`
+
+- `districtId` 0 (the default) means the whole city and uses `SetCityPolicy` or `UnsetCityPolicy`. Any other id uses `SetDistrictPolicy` or `UnsetDistrictPolicy`. These are the calls the policies panel makes.
+- Services, Taxation and CityPlanning policies can be set city-wide or per district. Specialization policies are per district only. Special, Event and Park policies are refused.
+- The policy must be loaded (the DLC is present) and unlocked.
+- The response gives `before`, `after` and `changed`.
+
+## MCP tools: plan checker, layouts, per-city context (wave 2, 2026-10-01)
+
+These are `mcp-server/src/` tools, not raw HTTP routes (`cs1_terrain_map` and
+`cs1_segment_route_share` wrap the HTTP routes documented above; the rest have no HTTP
+equivalent). UNVERIFIED IN GAME: measured against the mock bridge and unit tests only, game not
+running during this wave.
+
+### cs1_terrain_map
+
+Wraps `GET /state/terrain/grid` (see above) and returns the payload as-is. Args: `x`, `z`
+(required), `radius` (16-2048, default 512), `cell` (min 16, default 64), `steep` (default 8).
+Cap 6000 chars; over cap, optional fields are dropped in order (`flow`, `flowNote`,
+`flowTruncated`, `legend`, `rowOrder`; the response then carries `dropped:[...]`), then arrays
+are trimmed with a count, and as a last resort a tiny `{truncated:true, sizeChars, keys}` object
+is returned. The text is always valid JSON; it is never sliced. Measured on the mock (256 m radius, 32 m
+cell, 16x16 grid): 856 chars (~214 tokens). Worst case per the HTTP route above: about 5.7 KB
+(~1.4K tokens) for a 64x64 grid with 8 flow regions, still under the 6000-char cap. Cached to
+`cities/<slug>/cache/terrain-map-<x>_<z>_<radius>_<cell>.json` when the loaded city resolves to a
+context dir (silent no-op otherwise; adds `cached:"<relative path>"` only).
+
+### cs1_segment_route_share
+
+Wraps `GET /state/segment-route-share` (see above). Args: `segmentId` or `x`+`z` (+ optional
+`radius`), `limit` (1-50, default 10), `budget` (1-1,000,000, default 150000). Cap 2000 chars;
+over cap, `topPairs` is truncated entry by entry with `pairsTruncated` updated to the true dropped
+count, then optional fields are dropped (`topPairs`, `meaning`, `byClass`) with `dropped:[...]`;
+never sliced, always valid JSON. Measured on the mock (20 `topPairs` rows): 1460 chars (~365 tokens). Cached to
+`cache/route-share-<segmentId>.json` the same way as `cs1_terrain_map`.
+
+### cs1_check_plan and the plan checker
+
+`cs1_check_plan {plan}` runs the pure checker (`mcp-server/src/checker.ts`) through
+`planGuard.ts`'s `enforcePlan`, which wires the checker to live reads (`/state/terrain`,
+`/state/networks?service=Road`, `/state/growables?service=Residential`,
+`/state/facilities?service=Water`, `/state/terrain/grid`). It never POSTs to the bridge; it only
+reads state to check the plan, and returns the verdict only. Measured on the mock (a single 10 m
+`Basic Road` segment, one A-SHORT advisory): 301 chars (~76 tokens). Cap 4000 chars; advisory list
+capped at 20 entries; HARD findings are never truncated.
+
+Plan shape:
+
+```ts
+type Plan = {
+  roads?: Array<{ prefab: string; points: Array<{x:number; z:number; elevation?:number}>; name?: string }>;
+  zones?: Array<{ zone: string; center:{x:number;z:number}; radius:number }>;
+  buildings?: Array<{ prefab: string; position:{x:number;z:number}; angleDegrees?: number; widthCells?: number; lengthCells?: number }>;
+  standingOrders?: StandingOrders; // optional inline override; otherwise parsed from the loaded city's city.md
+};
+```
+
+Sample verdict shape:
+
+```json
+{"verdict":"blocked","hard":[{"rule":"H-WATER","msg":"...","at":{"x":0,"z":0}}],
+ "advisory":[{"rule":"A-SHORT","msg":"...","at":{"x":0,"z":0}}],"advisoryTotal":3,
+ "checked":{"points":120,"segments":14,"zones":2,"buildings":1},"sources":{"terrainCalls":2}}
+```
+
+HARD rules (block, never truncated):
+
+| Rule | Trigger | Citation |
+|---|---|---|
+| H-WATER | any ground road point/centreline sample (<= 8 m spacing), building position/footprint corner, or zone centre on water | Water guard above; `CLAUDE.md` hard gate |
+| H-NOBUILD | a road sample, building position/corner, or zone circle inside a standing-order `NO-BUILD` polygon/bbox | `CLAUDE.md` Standing orders |
+| H-TURN | a `Metro`/`Train` (track) road whose interior XZ turn exceeds 40 deg | `lessons.md` Proven Rules ("every node turn <= 40 deg") |
+| H-CROSSING | a plan road segment properly crossing an existing one (from `/state/networks?service=Road`) more than 8 m from both plan endpoints and the existing segment's nodes | `SKILL.md` Known Gotchas (node reuse snaps within 8 m). Downgrades to ADVISORY ("network too large to check") when `/state/networks` `total` exceeds the rows returned |
+
+ADVISORY rules (capped at 20 entries, counted in `advisoryTotal`):
+
+| Rule | Trigger | Citation |
+|---|---|---|
+| A-SHORT | a segment shorter than 32 m | `SKILL.md` Inspection Loop `shortSegmentLength` default |
+| A-GRADE | `\|dElevation + dTerrain\| / length > 8%` | `knowledge.md` Roads (<= 8%), `lessons.md:451` |
+| A-HIERARCHY | a `Basic Road` segment sharing an endpoint (<= 8 m) with a plan or existing `Highway` segment | `knowledge.md` Traffic (UNVERIFIED, advisory only) |
+| A-INDUSTRY-BUFFER | an `Industrial` zone circle within 200 m of a `Residential` zone circle (plan or existing growable) | `knowledge.md` Pollution 200 m rule, `cities/portville/plan.md:899-901` |
+| A-HDCOMM-BUFFER | a `CommercialHigh` zone within 32 m (4 cells) of a `Residential` zone | `knowledge.md` Zoning (UNVERIFIED) |
+| A-SEWAGE | an outflow prefab (name has "Outlet"/"Drain"/"Treatment") upstream of, or sharing a still water body with, an intake prefab ("Intake"/"Pumping"), per `GET /state/terrain/grid` flow at the midpoint | `knowledge.md` Water and sewage (indicative only, never HARD) |
+
+Inline enforcement: `cs1_build_grid`, `cs1_build_neighborhood`, `cs1_build_network`,
+`cs1_connect` (road prefabs only; pipes/power exempt), `cs1_place_building`, `cs1_set_zone` and
+`cs1_stamp_layout` all run the checker before touching the bridge, including dry runs. On HARD,
+the tool returns `ERROR: plan check blocked: <rule>: <msg> | ...` and the bridge is never called;
+there is no opt-out. On ADVISORY, the real call proceeds and the response gains
+`planCheck:{advisory:[...], advisoryTotal:n}`. Deviation: `cs1_build_grid` /
+`cs1_build_neighborhood` approximate the lattice as whole row/column lines rather than the real
+bridge's per-cell pieces, so H-CROSSING/H-TURN scan a slightly larger shape (conservative for
+H-WATER/H-NOBUILD, occasionally over-reports a crossing a real piecewise build would avoid).
+
+`CS1_CITY_FILE` env overrides where standing orders are read from; else the loaded city's
+`cities/<slug>/city.md` (via `resolveCityDir`); else the repo root `city.md`. Only these machine
+lines, under a `## Standing orders` or `## Protected areas` heading, are parsed - everything else
+in that section is prose for the human/model reviewer:
+
+```
+- NO-BUILD <name>: bbox <minX>,<minZ> <maxX>,<maxZ>
+- NO-BUILD <name>: polygon <x>,<z>;<x>,<z>;...
+- MAX-SPEND <number>
+```
+
+### cs1_stamp_layout and layout templates
+
+Args: `name` (reads `templates/layouts/<name>.json`, `CS1_LAYOUT_DIR` overrides the default
+`<repo>/templates/layouts`), `anchor:{x,z}`, `angleDeg`, `roads?` (role -> prefab override,
+validated against the role's `allowed` list), `dryRun?`.
+
+Rotation: world point = anchor + rotate(local, angleDeg), where `x' = x*cos(a) + z*sin(a)`,
+`z' = -x*sin(a) + z*cos(a)`, `a` in radians (the same convention as `angleDegrees` elsewhere in
+this server; unit-tested in `checker.test.js`).
+
+Flow: (1) build the plan from the template's nodes/segments/roles, (2) run the plan checker (a
+HARD block comes back as `ERROR: plan check blocked: ...`, no opt-out, nothing posted), (3)
+dry-run every piece via `POST /commands/batch` (`{dryRun:true, stopOnError:false,
+commands:[{type:"build-road", ...}]}`, chunked to the bridge's limit of 32 commands per call) and
+return `waterCheck:{pieces, dryRunOk, dryRunFailed, onWater, firstFailures}`; a dry run that
+refuses any piece ends the call with `ok:false` and nothing built, (4) on a real call, POST the
+chunks in order with `stopOnError:true`; on any failed item report `built:{count, ids (first 20),
+known}`, `failedIndex`, `error`, `notBuilt` and a `repair` line, never retrying silently. If a
+batch CALL itself throws, the bridge may have built part of that chunk (it executes
+sequentially), so `built.known` is false and `repair` says to read the networks and anomalies
+inside `footprint` before touching anything. (5) After a real run, read `/state/road-anomalies`
+(limit 500, `includeDeadEnds=false`), filter to the rotated footprint bbox, and report
+`anomaliesInFootprint`. Advisories are grouped per rule (`{rule, count, first}`) so a
+roundabout's twelve 23 m pieces are one A-SHORT line. Measured on the mock: `t-junction` dry
+run 261 chars; every shipped template dry run 290-484 chars (~75-120 tokens); a HARD-blocked
+40-piece cloverleaf in water 651 chars. Cap 3000 chars via the same drop-then-trim rule as the
+other tools (`dryRunItems`, `advisory`, `waterCheck`, `footprint` dropped first).
+
+Template file shape and the rule that every prefab name must appear verbatim somewhere in
+`docs/api.md`, `lessons.md`, `knowledge.md`, `transit.md` or a `*-master-plan.md`/`cities/**`
+file are documented in `templates/layouts/README.md`, which also lists every template, its
+footprint, and what it is for. As of 2026-10-01, no confirmed `Highway Elevated` or
+`Highway Ramp Elevated` prefab name exists anywhere in this repo: the highway x arterial
+interchange templates (`diamond`, `parclo`, `cloverleaf`) elevate the crossing arterial
+(`Medium Road Elevated`, confirmed) instead, and put nonzero `elevation` on ordinary ground-prefab
+`Highway Ramp` nodes for the ramps, matching the Portville IC precedent (`cities/portville/`
+lessons, 2026-09-27: a ground prefab with node elevation does not raise the terrain sample).
+`templates/layouts/validate.py` is a pure-Python, pure-offline checker (schema, segment length
+<= 100 m, node separation, grade <= 8%, role defaults); all 9 shipped templates pass it, but every
+`geometryStatus` stays `"UNVERIFIED IN GAME"` until a live `dryRun:true` stamp confirms it.
+
+### cs1_city_context, per-city context dirs, and the session city guard
+
+`cs1_city_context {}` calls `GET /health`, reads `.city` (`null` if no level is loaded), and
+resolves a context directory via `resolveCityDir` (`mcp-server/src/cityContext.ts`): a
+`cities/<slug>/city.md` whose header `id:` matches the loaded city's id wins; else a dir with
+an EXPLICIT `id: unknown` line and a case-insensitive matching `name:` is bound in place (its
+header is rewritten: `id:` set to the real id, `bindOnLoad: false`; the rewrite is read back and
+`bound:false` plus `bindNote` is returned if it did not stick). A city.md with no `id:` line is
+never bound (it could not be rewritten and would silently absorb a city). Two or more dirs that
+both match by name are ambiguous: nothing is bound, `dir` is null and `resolveNote` names them so
+the player sets the id by hand. Calling this tool **declares the session city id**
+in module state. Response: `{city, dir, exists, bound, files:{cityMd,progressMd,planMd,
+lessonsMd}, cache:[...] (max 20, with cacheTruncated), sessionCityId, note?}`. Cap 2000 chars
+(falls back to 5 cache entries if the full list would exceed it). Measured on the mock plus a temp
+fixture dir with only `city.md`/`progress.md`: 448 chars (~112 tokens).
+
+Every mutation tool (`build_*`, `connect`, `set_zone`, `repair_*`, `place_building`,
+`move_building`, `bulldoze`, `unlock_area`, `transit_line_*`, `set_policy`,
+`set_service_budget`, `set_tax_rate`, `set_simulation_speed`, `stamp_layout`, `save`) runs one
+shared guard (`guardSessionCity`, `src/cityContext.ts`, used by `commands.ts` and `transit.ts`,
+not copy-pasted) before every call: GET `/health`; `city` null -> error "no city loaded"; a
+session id already declared and it differs -> error "loaded city `<name>` (`<id>`) differs from
+the session city `<id>`: stop, re-read context (`cs1_city_context`)" and the bridge is never
+called, no opt-out; nothing declared yet -> auto-declares and the response gains `city:{id,name}`
+and a note. One extra GET per mutation; no measurable token cost beyond the small `city`/`note`
+fields on the first call.
+
+`cities/<slug>/` holds `city.md`, `progress.md`, `plan.md`, `lessons.md` (city-specific only;
+global Proven Rules stay in the root `lessons.md`) and `cache/` (terrain-map and route-share
+snapshots, wrapped as `{capturedAt:{gameDate,population,wallClock}, payload}`). Slug = the city
+name lower-cased with runs of non-`[a-z0-9]` collapsed to `-`, plus `-` and the id's first 8 chars
+once the id is known. `cities/README.md` is the full layout/slug/bind/stub reference;
+`templates/city/` holds the five starter files for a new city. `cs1_master_plan` now resolves the
+loaded city's `cities/<slug>/plan.md` first (via the same `resolveCityDir`), falling back to
+`CS1_MASTER_PLAN` / the legacy default; its response `source` field says which file was read.
+
+### Bench scripts (no MCP tool; shell + Node)
+
+`scripts/bench-run.sh <scenario>` copies a named save from `bench/manifest.json` to
+`bench-<scenario>-<ts>.crp` (refuses if that name exists), restarts the game, and runs
+`scripts/bench-score.mjs`, which reads `/health`, `/state/summary`, `/state/transit`,
+`/state/economy`, `/state/problems`, `/state/traffic`, checks the loaded city's name/population
+against the manifest (and, once a `cityDir` is set, its `id:` against the bound directory) before
+scoring, then unpauses, waits `settleDays`, samples, and writes
+`<cityDir>/cache/bench/<scenario>-<ts>.json` (or `bench/results/` with no `cityDir`). `--compare`
+reports a `signal:true` delta only when it exceeds both the baseline's sample spread and 2x its
+stddev. `cashBalance` is read from `/state/areas` `cash`, not `/state/economy` (which carries tax
+rates only, no cash field) - a documented deviation from the literal spec endpoint list; see
+`bench/README.md`. Pure scoring (`bench/lib/score.mjs`) is unit-tested in `bench/test/score.test.mjs`
+(`node --test`, 10/10 passing as of 2026-10-01); no live run against the bridge has happened this
+wave. Never run on a user's save - it always copies first.
+
+## In-game chat
+
+See [chat.md](chat.md) for the `/chat/*` endpoints behind the in-game Claude panel.

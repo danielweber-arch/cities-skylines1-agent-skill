@@ -1,0 +1,217 @@
+{
+  "name": "trumpet",
+  "version": 1,
+  "description": "Trumpet interchange: one terminating Medium Road stem meets a through Highway via a direct ramp (one movement) and a loop ramp (the other movement).",
+  "geometryStatus": "UNVERIFIED IN GAME",
+  "anchor": "anchor = centre of the layout; +z = main axis at angleDeg 0; angleDeg rotates clockwise seen from above (standard CS1 angle convention used by place-building angleDegrees)",
+  "roles": {
+    "main": {
+      "default": "Highway",
+      "allowed": [
+        "Highway"
+      ]
+    },
+    "ramp": {
+      "default": "Highway Ramp",
+      "allowed": [
+        "Highway Ramp"
+      ]
+    },
+    "stem": {
+      "default": "Medium Road",
+      "allowed": [
+        "Medium Road"
+      ]
+    }
+  },
+  "nodes": {
+    "Hwy_W": {
+      "x": -300,
+      "z": 0,
+      "elevation": 0
+    },
+    "Hwy_Mid": {
+      "x": 0,
+      "z": 0,
+      "elevation": 0
+    },
+    "Hwy_E": {
+      "x": 300,
+      "z": 0,
+      "elevation": 0
+    },
+    "Stem_S": {
+      "x": 0,
+      "z": 300,
+      "elevation": 0
+    },
+    "Stem_Rise": {
+      "x": 0,
+      "z": 200,
+      "elevation": 8
+    },
+    "DirectRamp_merge": {
+      "x": 150,
+      "z": 100,
+      "elevation": 0
+    },
+    "LoopRamp_top": {
+      "x": -150,
+      "z": 100,
+      "elevation": 8
+    },
+    "LoopRamp_descend": {
+      "x": -250,
+      "z": 50,
+      "elevation": 0
+    },
+    "Hwy_W_Hwy_Mid_s0_i1": {
+      "x": -200.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "Hwy_W_Hwy_Mid_s0_i2": {
+      "x": -100.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "Hwy_Mid_Hwy_E_s1_i1": {
+      "x": 100.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "Hwy_Mid_Hwy_E_s1_i2": {
+      "x": 200.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "Stem_Rise_DirectRamp_merge_s3_i1": {
+      "x": 75.0,
+      "z": 150.0,
+      "elevation": 4.0
+    },
+    "DirectRamp_merge_Hwy_Mid_s4_i1": {
+      "x": 75.0,
+      "z": 50.0,
+      "elevation": 0.0
+    },
+    "Stem_Rise_LoopRamp_top_s5_i1": {
+      "x": -75.0,
+      "z": 150.0,
+      "elevation": 8.0
+    },
+    "LoopRamp_top_LoopRamp_descend_s6_i1": {
+      "x": -200.0,
+      "z": 75.0,
+      "elevation": 4.0
+    }
+  },
+  "segments": [
+    {
+      "from": "Hwy_W",
+      "to": "Hwy_W_Hwy_Mid_s0_i1",
+      "role": "main",
+      "name": "highway west"
+    },
+    {
+      "from": "Hwy_W_Hwy_Mid_s0_i1",
+      "to": "Hwy_W_Hwy_Mid_s0_i2",
+      "role": "main",
+      "name": "highway west"
+    },
+    {
+      "from": "Hwy_W_Hwy_Mid_s0_i2",
+      "to": "Hwy_Mid",
+      "role": "main",
+      "name": "highway west"
+    },
+    {
+      "from": "Hwy_Mid",
+      "to": "Hwy_Mid_Hwy_E_s1_i1",
+      "role": "main",
+      "name": "highway east"
+    },
+    {
+      "from": "Hwy_Mid_Hwy_E_s1_i1",
+      "to": "Hwy_Mid_Hwy_E_s1_i2",
+      "role": "main",
+      "name": "highway east"
+    },
+    {
+      "from": "Hwy_Mid_Hwy_E_s1_i2",
+      "to": "Hwy_E",
+      "role": "main",
+      "name": "highway east"
+    },
+    {
+      "from": "Stem_S",
+      "to": "Stem_Rise",
+      "role": "stem",
+      "name": "stem rise (100 m, 8%)"
+    },
+    {
+      "from": "Stem_Rise",
+      "to": "Stem_Rise_DirectRamp_merge_s3_i1",
+      "role": "ramp",
+      "name": "direct ramp to eastbound"
+    },
+    {
+      "from": "Stem_Rise_DirectRamp_merge_s3_i1",
+      "to": "DirectRamp_merge",
+      "role": "ramp",
+      "name": "direct ramp to eastbound"
+    },
+    {
+      "from": "DirectRamp_merge",
+      "to": "DirectRamp_merge_Hwy_Mid_s4_i1",
+      "role": "ramp",
+      "name": "direct ramp merges east"
+    },
+    {
+      "from": "DirectRamp_merge_Hwy_Mid_s4_i1",
+      "to": "Hwy_Mid",
+      "role": "ramp",
+      "name": "direct ramp merges east"
+    },
+    {
+      "from": "Stem_Rise",
+      "to": "Stem_Rise_LoopRamp_top_s5_i1",
+      "role": "ramp",
+      "name": "loop ramp over stem"
+    },
+    {
+      "from": "Stem_Rise_LoopRamp_top_s5_i1",
+      "to": "LoopRamp_top",
+      "role": "ramp",
+      "name": "loop ramp over stem"
+    },
+    {
+      "from": "LoopRamp_top",
+      "to": "LoopRamp_top_LoopRamp_descend_s6_i1",
+      "role": "ramp",
+      "name": "loop ramp descent (100 m, 8%)"
+    },
+    {
+      "from": "LoopRamp_top_LoopRamp_descend_s6_i1",
+      "to": "LoopRamp_descend",
+      "role": "ramp",
+      "name": "loop ramp descent (100 m, 8%)"
+    },
+    {
+      "from": "LoopRamp_descend",
+      "to": "Hwy_W",
+      "role": "ramp",
+      "name": "loop ramp merges west"
+    }
+  ],
+  "footprint": {
+    "minX": -320,
+    "maxX": 320,
+    "minZ": -20,
+    "maxZ": 320
+  },
+  "notes": [
+    "use when only one road terminates into the highway (classic trumpet, not a 4-leg crossing).",
+    "loop ramp clears the stem at elevation 8 over a 100 m rise/descent each side (lessons.md:716); verify actual separation >= 8 m against the stem's elevation at the crossing point before a real build."
+  ]
+}

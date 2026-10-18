@@ -1,0 +1,21 @@
+{
+  "name": "t-fail",
+  "version": 1,
+  "description": "Test fixture: second piece is named FAIL-HERE so the mock bridge fails it on a real run.",
+  "geometryStatus": "UNVERIFIED IN GAME",
+  "anchor": "origin = centre; +z = main axis at angleDeg 0",
+  "roles": { "main": { "default": "Basic Road", "allowed": ["Basic Road"] } },
+  "nodes": {
+    "A": { "x": 0, "z": -80, "elevation": 0 },
+    "B": { "x": 0, "z": 0, "elevation": 0 },
+    "C": { "x": 80, "z": 0, "elevation": 0 },
+    "D": { "x": 160, "z": 0, "elevation": 0 }
+  },
+  "segments": [
+    { "from": "A", "to": "B", "role": "main", "name": "first" },
+    { "from": "B", "to": "C", "role": "main", "name": "second FAIL-HERE" },
+    { "from": "C", "to": "D", "role": "main", "name": "third" }
+  ],
+  "footprint": { "minX": -8, "maxX": 168, "minZ": -88, "maxZ": 8 },
+  "notes": ["Test fixture only."]
+}

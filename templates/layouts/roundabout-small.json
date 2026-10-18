@@ -1,0 +1,161 @@
+{
+  "name": "roundabout-small",
+  "version": 1,
+  "description": "Single-lane ring (8-node octagon, r=30 m) with four Basic Road approach legs. For a local/collector junction, not highway-grade.",
+  "geometryStatus": "UNVERIFIED IN GAME",
+  "anchor": "anchor = centre of the layout; +z = main axis at angleDeg 0; angleDeg rotates clockwise seen from above (standard CS1 angle convention used by place-building angleDegrees)",
+  "roles": {
+    "ring": {
+      "default": "Medium Road",
+      "allowed": [
+        "Medium Road"
+      ]
+    },
+    "leg": {
+      "default": "Basic Road",
+      "allowed": [
+        "Basic Road",
+        "Basic Road",
+        "Medium Road"
+      ]
+    }
+  },
+  "nodes": {
+    "R0": {
+      "x": 0.0,
+      "z": 30.0,
+      "elevation": 0
+    },
+    "R1": {
+      "x": 21.2,
+      "z": 21.2,
+      "elevation": 0
+    },
+    "R2": {
+      "x": 30.0,
+      "z": 0.0,
+      "elevation": 0
+    },
+    "R3": {
+      "x": 21.2,
+      "z": -21.2,
+      "elevation": 0
+    },
+    "R4": {
+      "x": 0.0,
+      "z": -30.0,
+      "elevation": 0
+    },
+    "R5": {
+      "x": -21.2,
+      "z": -21.2,
+      "elevation": 0
+    },
+    "R6": {
+      "x": -30.0,
+      "z": -0.0,
+      "elevation": 0
+    },
+    "R7": {
+      "x": -21.2,
+      "z": 21.2,
+      "elevation": 0
+    },
+    "LegN": {
+      "x": 0.0,
+      "z": 110.0,
+      "elevation": 0
+    },
+    "LegE": {
+      "x": 110.0,
+      "z": 0.0,
+      "elevation": 0
+    },
+    "LegS": {
+      "x": 0.0,
+      "z": -110.0,
+      "elevation": 0
+    },
+    "LegW": {
+      "x": -110.0,
+      "z": 0.0,
+      "elevation": 0
+    }
+  },
+  "segments": [
+    {
+      "from": "R0",
+      "to": "R1",
+      "role": "ring"
+    },
+    {
+      "from": "R1",
+      "to": "R2",
+      "role": "ring"
+    },
+    {
+      "from": "R2",
+      "to": "R3",
+      "role": "ring"
+    },
+    {
+      "from": "R3",
+      "to": "R4",
+      "role": "ring"
+    },
+    {
+      "from": "R4",
+      "to": "R5",
+      "role": "ring"
+    },
+    {
+      "from": "R5",
+      "to": "R6",
+      "role": "ring"
+    },
+    {
+      "from": "R6",
+      "to": "R7",
+      "role": "ring"
+    },
+    {
+      "from": "R7",
+      "to": "R0",
+      "role": "ring"
+    },
+    {
+      "from": "R0",
+      "to": "LegN",
+      "role": "leg",
+      "name": "approach N"
+    },
+    {
+      "from": "R2",
+      "to": "LegE",
+      "role": "leg",
+      "name": "approach E"
+    },
+    {
+      "from": "R4",
+      "to": "LegS",
+      "role": "leg",
+      "name": "approach S"
+    },
+    {
+      "from": "R6",
+      "to": "LegW",
+      "role": "leg",
+      "name": "approach W"
+    }
+  ],
+  "footprint": {
+    "minX": -120.0,
+    "maxX": 120.0,
+    "minZ": -120.0,
+    "maxZ": 120.0
+  },
+  "notes": [
+    "8-node ring kept under 100 m per chord even at the large radius (46 m at r=60).",
+    "legs are straight stubs; snap a grid's first node onto LegN/E/S/W rather than re-anchoring."
+  ]
+}

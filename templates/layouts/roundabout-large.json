@@ -1,0 +1,205 @@
+{
+  "name": "roundabout-large",
+  "version": 1,
+  "description": "Larger ring (8-node octagon, r=60 m) with four Medium Road approach legs, for a collector/arterial junction carrying more volume than roundabout-small.",
+  "geometryStatus": "UNVERIFIED IN GAME",
+  "anchor": "anchor = centre of the layout; +z = main axis at angleDeg 0; angleDeg rotates clockwise seen from above (standard CS1 angle convention used by place-building angleDegrees)",
+  "roles": {
+    "ring": {
+      "default": "Large Road",
+      "allowed": [
+        "Large Road"
+      ]
+    },
+    "leg": {
+      "default": "Medium Road",
+      "allowed": [
+        "Medium Road",
+        "Basic Road",
+        "Medium Road"
+      ]
+    }
+  },
+  "nodes": {
+    "R0": {
+      "x": 0.0,
+      "z": 60.0,
+      "elevation": 0
+    },
+    "R1": {
+      "x": 42.4,
+      "z": 42.4,
+      "elevation": 0
+    },
+    "R2": {
+      "x": 60.0,
+      "z": 0.0,
+      "elevation": 0
+    },
+    "R3": {
+      "x": 42.4,
+      "z": -42.4,
+      "elevation": 0
+    },
+    "R4": {
+      "x": 0.0,
+      "z": -60.0,
+      "elevation": 0
+    },
+    "R5": {
+      "x": -42.4,
+      "z": -42.4,
+      "elevation": 0
+    },
+    "R6": {
+      "x": -60.0,
+      "z": -0.0,
+      "elevation": 0
+    },
+    "R7": {
+      "x": -42.4,
+      "z": 42.4,
+      "elevation": 0
+    },
+    "LegN": {
+      "x": 0.0,
+      "z": 180.0,
+      "elevation": 0
+    },
+    "LegE": {
+      "x": 180.0,
+      "z": 0.0,
+      "elevation": 0
+    },
+    "LegS": {
+      "x": 0.0,
+      "z": -180.0,
+      "elevation": 0
+    },
+    "LegW": {
+      "x": -180.0,
+      "z": 0.0,
+      "elevation": 0
+    },
+    "R0_LegN_s8_i1": {
+      "x": 0.0,
+      "z": 120.0,
+      "elevation": 0.0
+    },
+    "R2_LegE_s9_i1": {
+      "x": 120.0,
+      "z": 0.0,
+      "elevation": 0.0
+    },
+    "R4_LegS_s10_i1": {
+      "x": 0.0,
+      "z": -120.0,
+      "elevation": 0.0
+    },
+    "R6_LegW_s11_i1": {
+      "x": -120.0,
+      "z": 0.0,
+      "elevation": 0.0
+    }
+  },
+  "segments": [
+    {
+      "from": "R0",
+      "to": "R1",
+      "role": "ring"
+    },
+    {
+      "from": "R1",
+      "to": "R2",
+      "role": "ring"
+    },
+    {
+      "from": "R2",
+      "to": "R3",
+      "role": "ring"
+    },
+    {
+      "from": "R3",
+      "to": "R4",
+      "role": "ring"
+    },
+    {
+      "from": "R4",
+      "to": "R5",
+      "role": "ring"
+    },
+    {
+      "from": "R5",
+      "to": "R6",
+      "role": "ring"
+    },
+    {
+      "from": "R6",
+      "to": "R7",
+      "role": "ring"
+    },
+    {
+      "from": "R7",
+      "to": "R0",
+      "role": "ring"
+    },
+    {
+      "from": "R0",
+      "to": "R0_LegN_s8_i1",
+      "role": "leg",
+      "name": "approach N"
+    },
+    {
+      "from": "R0_LegN_s8_i1",
+      "to": "LegN",
+      "role": "leg",
+      "name": "approach N"
+    },
+    {
+      "from": "R2",
+      "to": "R2_LegE_s9_i1",
+      "role": "leg",
+      "name": "approach E"
+    },
+    {
+      "from": "R2_LegE_s9_i1",
+      "to": "LegE",
+      "role": "leg",
+      "name": "approach E"
+    },
+    {
+      "from": "R4",
+      "to": "R4_LegS_s10_i1",
+      "role": "leg",
+      "name": "approach S"
+    },
+    {
+      "from": "R4_LegS_s10_i1",
+      "to": "LegS",
+      "role": "leg",
+      "name": "approach S"
+    },
+    {
+      "from": "R6",
+      "to": "R6_LegW_s11_i1",
+      "role": "leg",
+      "name": "approach W"
+    },
+    {
+      "from": "R6_LegW_s11_i1",
+      "to": "LegW",
+      "role": "leg",
+      "name": "approach W"
+    }
+  ],
+  "footprint": {
+    "minX": -190.0,
+    "maxX": 190.0,
+    "minZ": -190.0,
+    "maxZ": 190.0
+  },
+  "notes": [
+    "8-node ring kept under 100 m per chord even at the large radius (46 m at r=60).",
+    "legs are straight stubs; snap a grid's first node onto LegN/E/S/W rather than re-anchoring."
+  ]
+}

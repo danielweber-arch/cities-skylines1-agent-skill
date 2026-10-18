@@ -1,0 +1,689 @@
+import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { BridgeClient } from "../client.js";
+import { SUMMARY_CHAR_BUDGET, encode } from "../filters.js";
+import { ZONE_NAMES, fail, failMessage, image, text } from "./shared.js";
+import { CityGuardError, guardSessionCity } from "../cityContext.js";
+import { enforcePlan, blockedMessage } from "../planGuard.js";
+import type { Plan } from "../checker.js";
+
+const point = z.object({
+  x: z.number().describe("World X in metres."),
+  z: z.number().describe("World Z in metres."),
+  elevation: z
+    .number()
+    .optional()
+    .describe(
+      "Metres above the terrain (negative = below). Needed on both points for tunnel, elevated " +
+        "and bridge prefabs (for example Metro Track at -12); omitted for ground networks.",
+    ),
+});
+
+const opId = z
+  .string()
+  .optional()
+  .describe(
+    "Idempotency key. If the call times out, retry with the same opId and the cached manifest " +
+      "is returned instead of building a second overlapping copy. Always set one for grids and " +
+      "neighborhoods.",
+  );
+
+const dryRun = z
+  .boolean()
+  .optional()
+  .describe("Validate and return the plan (including blockCenters) without changing the city.");
+
+const WATER_GUARD_NOTE =
+  " Refused by the bridge with 'Cannot build on water' when a ground endpoint, centreline or " +
+  "footprint is over water. On a refusal, re-plan: move the point, or cross with a " +
+  "bridge/elevated or tunnel prefab and elevation on both points, or ask the player. Exempt: " +
+  "pipes, power lines, quays, canals, flood walls, ship and ferry paths, bridge and tunnel " +
+  "pieces, dams, and endpoints with |elevation| >= 1 m.";
+
+/**
+ * Plan builder for cs1_build_grid: one PlanRoad per LATTICE PIECE (each exactly `spacing` long,
+ * between adjacent lattice nodes), rows and columns, rather than one PlanRoad per whole line.
+ * This is what lets an existing road that meets the lattice exactly at a real lattice node land
+ * on a real plan-segment endpoint, so H-CROSSING's "> 8 m from any node" test correctly treats it
+ * as a join rather than a false crossing. The point count sampled by the checker is unchanged
+ * (same number of 8 m samples either way).
+ */
+export function buildGridPlan(body: Record<string, unknown>): Plan | null {
+  const origin = body.origin as { x: number; z: number } | undefined;
+  const cols = Number(body.cols ?? 0);
+  const rows = Number(body.rows ?? 0);
+  const spacing = Number(body.spacing ?? 80);
+  const roadPrefab = String(body.roadPrefab ?? "");
+  if (!origin || !cols || !rows) return null;
+  const roads: Plan["roads"] = [];
+  // Horizontal pieces: rows+1 lines, each split into `cols` pieces of length `spacing`.
+  for (let r = 0; r <= rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      roads!.push({
+        prefab: roadPrefab,
+        points: [
+          { x: origin.x + c * spacing, z: origin.z + r * spacing },
+          { x: origin.x + (c + 1) * spacing, z: origin.z + r * spacing },
+        ],
+      });
+    }
+  }
+  // Vertical pieces: cols+1 lines, each split into `rows` pieces of length `spacing`.
+  for (let c = 0; c <= cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      roads!.push({
+        prefab: roadPrefab,
+        points: [
+          { x: origin.x + c * spacing, z: origin.z + r * spacing },
+          { x: origin.x + c * spacing, z: origin.z + (r + 1) * spacing },
+        ],
+      });
+    }
+  }
+  return { roads };
+}
+
+/** Plan builder for cs1_build_neighborhood: centres a grid, then reuses buildGridPlan. */
+export function buildNeighborhoodPlan(body: Record<string, unknown>): Plan | null {
+  const center = body.center as { x: number; z: number } | undefined;
+  const cols = Number(body.cols ?? body.radiusOrCols ?? 4);
+  const rows = Number(body.rows ?? body.radiusOrCols ?? 4);
+  const spacing = Number(body.spacing ?? 80);
+  const roadPrefab = String(body.roadPrefab ?? "");
+  if (!center) return null;
+  const origin = { x: center.x - (cols * spacing) / 2, z: center.z - (rows * spacing) / 2 };
+  return buildGridPlan({ origin, cols, rows, spacing, roadPrefab });
+}
+
+export function registerCommandTools(server: McpServer, bridge: BridgeClient) {
+  /**
+   * Session city guard (HARD, no opt-out) plus optional inline plan enforcement, in front of
+   * every mutation tool (wave2-spec.md section 3 and section 8). `planBuilder` converts the
+   * tool's args into a checker Plan; when it returns a HARD verdict the bridge is never called.
+   */
+  const run = async (
+    path: string,
+    body: Record<string, unknown>,
+    planBuilder?: (body: Record<string, unknown>) => Plan | null | Promise<Plan | null>,
+  ) => {
+    try {
+      const guard = await guardSessionCity(bridge);
+
+      let planCheckAttach: Record<string, unknown> | undefined;
+      if (planBuilder) {
+        const plan = await planBuilder(body);
+        if (plan) {
+          const check = await enforcePlan(plan, bridge);
+          if (check.verdict === "blocked") {
+            const msg = blockedMessage(check);
+            // When the guard just auto-declared the session city, keep that declaration visible
+            // even though the plan check is about to block the call outright.
+            const prefixed = guard.note && guard.city ? `${msg} [session bound to ${guard.city.name} (${guard.city.id})]` : msg;
+            return failMessage(prefixed);
+          }
+          if (check.verdict === "advisory") {
+            planCheckAttach = { advisory: check.advisory, advisoryTotal: check.advisoryTotal };
+          }
+        }
+      }
+
+      const result = (await bridge.post(path, body)) as Record<string, unknown>;
+      const withCity = guard.note ? { ...result, city: guard.city, note: guard.note } : result;
+      const withPlanCheck = planCheckAttach ? { ...withCity, planCheck: planCheckAttach } : withCity;
+      return text(encode(withPlanCheck, SUMMARY_CHAR_BUDGET));
+    } catch (error) {
+      if (error instanceof CityGuardError) return fail(error);
+      return fail(error);
+    }
+  };
+
+  /**
+   * cs1_connect needs special handling when toService is Road (the default): the plan that
+   * actually gets built is `from` -> wherever the bridge's own dry run resolves as the nearest
+   * network node, not a synthetic point at `from`. So the checker previously ran a plan that
+   * never covered the real road at all. Fix: run the bridge's dry run first to learn
+   * targetPosition, plan-check the real from->targetPosition road, then do the real call (or
+   * reuse the dry-run result when the caller only asked for a dry run). If the dry run has no
+   * usable targetPosition (alreadyConnected or error), fall back to the previous behaviour: no
+   * plan check, straight through to the bridge. Pipes/power (toService != Road) stay exempt.
+   */
+  const runConnect = async (body: Record<string, unknown>) => {
+    try {
+      const guard = await guardSessionCity(bridge);
+      const toService = String(body.toService ?? "Road");
+      let planCheckAttach: Record<string, unknown> | undefined;
+      let probeResult: Record<string, unknown> | undefined;
+
+      if (toService === "Road") {
+        try {
+          probeResult = (await bridge.post("/commands/connect", { ...body, dryRun: true })) as Record<string, unknown>;
+        } catch {
+          probeResult = undefined;
+        }
+        const targetPosition = probeResult?.targetPosition as { x: number; z: number } | undefined;
+        const usable = Boolean(targetPosition) && !probeResult?.alreadyConnected && !probeResult?.error;
+        if (usable && targetPosition) {
+          const from = body.from as { x: number; z: number };
+          const roadPrefab = String(body.roadPrefab ?? "Basic Road");
+          const plan: Plan = { roads: [{ prefab: roadPrefab, points: [from, targetPosition] }] };
+          const check = await enforcePlan(plan, bridge);
+          if (check.verdict === "blocked") {
+            const msg = blockedMessage(check);
+            const prefixed = guard.note && guard.city ? `${msg} [session bound to ${guard.city.name} (${guard.city.id})]` : msg;
+            return failMessage(prefixed);
+          }
+          if (check.verdict === "advisory") {
+            planCheckAttach = { advisory: check.advisory, advisoryTotal: check.advisoryTotal };
+          }
+        }
+      }
+
+      // Reuse the probe when the caller only wanted a dry run and the probe succeeded, rather
+      // than posting an identical dryRun:true call to the bridge a second time.
+      const result =
+        toService === "Road" && body.dryRun === true && probeResult
+          ? probeResult
+          : ((await bridge.post("/commands/connect", body)) as Record<string, unknown>);
+      const withCity = guard.note ? { ...result, city: guard.city, note: guard.note } : result;
+      const withPlanCheck = planCheckAttach ? { ...withCity, planCheck: planCheckAttach } : withCity;
+      return text(encode(withPlanCheck, SUMMARY_CHAR_BUDGET));
+    } catch (error) {
+      if (error instanceof CityGuardError) return fail(error);
+      return fail(error);
+    }
+  };
+
+  // Elevation is honoured only for prefabs that really leave the ground (bridge, elevated, slope,
+  // tunnel, and the underground metro track whose name says neither). On a ground prefab a stray
+  // elevation would make the checker and the bridge treat the points as non-ground and skip the
+  // water guard (codex review 2026-10-17), so it is dropped before the plan check and the call.
+  const allowsElevation = (prefab: string): boolean =>
+    /bridge|elevated|slope|tunnel/i.test(prefab) || /^metro (oneway )?track$/i.test(prefab.trim());
+
+  const withGroundElevationStripped = <T extends Record<string, unknown>>(args: T): T => {
+    if (allowsElevation(String(args.roadPrefab ?? ""))) return args;
+    const strip = (p: unknown) => {
+      if (!p || typeof p !== "object") return p;
+      const { elevation: _dropped, ...rest } = p as Record<string, unknown>;
+      return rest;
+    };
+    return { ...args, start: strip(args.start), end: strip(args.end) };
+  };
+
+  const networkPlan = (body: Record<string, unknown>): Plan | null => {
+    const start = body.start as { x: number; z: number } | undefined;
+    const end = body.end as { x: number; z: number } | undefined;
+    const roadPrefab = String(body.roadPrefab ?? "");
+    if (!start || !end) return null;
+    return { roads: [{ prefab: roadPrefab, points: [start, end] }] };
+  };
+
+  // Prefab footprint (8 m cells) and placement mode from GET /prefabs/buildings, cached for the
+  // process. A name missing from the cache triggers one successful refresh; a failed read leaves the
+  // check without a looked-up size or exemption (caller overrides still apply).
+  type PrefabInfo = { width: number; length: number; placementMode: string };
+  let prefabCache: Map<string, PrefabInfo> | null = null;
+  const refreshedFor = new Set<string>();
+  const lookupPrefab = async (name: string): Promise<PrefabInfo | undefined> => {
+    const load = async () => {
+      const res = (await bridge.get("/prefabs/buildings")) as { buildings?: Array<Record<string, unknown>> };
+      // A body without the list is a failed read, not an empty catalogue.
+      if (!Array.isArray(res?.buildings)) throw new Error("prefab list missing from /prefabs/buildings");
+      const map = new Map<string, PrefabInfo>();
+      for (const b of res.buildings) {
+        if (typeof b.name !== "string") continue;
+        map.set(b.name, {
+          width: Number(b.width ?? 0),
+          length: Number(b.length ?? 0),
+          placementMode: String(b.placementMode ?? ""),
+        });
+      }
+      prefabCache = map;
+    };
+    try {
+      if (!prefabCache) await load();
+      if (!prefabCache!.has(name) && !refreshedFor.has(name)) {
+        await load();
+        // Mark only after a successful read, so a failed refresh cannot poison the name.
+        refreshedFor.add(name);
+      }
+      return prefabCache!.get(name);
+    } catch {
+      return undefined;
+    }
+  };
+  const WATER_PLACEMENT_MODES = new Set(["Shoreline", "ShorelineOrGround", "OnWater"]);
+
+  const placeBuildingPlan = async (
+    body: Record<string, unknown>,
+    size: { widthCells?: number; lengthCells?: number },
+  ): Promise<Plan | null> => {
+    const position = body.position as { x: number; z: number } | undefined;
+    if (!position) return null;
+    const prefab = String(body.buildingPrefab ?? "");
+    const info = await lookupPrefab(prefab);
+    // An override can only enlarge the checked footprint: the bridge always places the real prefab.
+    const pick = (override: number | undefined, known: number | undefined) =>
+      override === undefined ? known : known === undefined ? override : Math.max(override, known);
+    const widthCells = pick(size.widthCells, info && info.width > 0 ? info.width : undefined);
+    const lengthCells = pick(size.lengthCells, info && info.length > 0 ? info.length : undefined);
+    return {
+      buildings: [
+        {
+          prefab,
+          position,
+          angleDegrees: body.angleDegrees as number | undefined,
+          widthCells,
+          lengthCells,
+          waterExempt: info ? WATER_PLACEMENT_MODES.has(info.placementMode) : false,
+        },
+      ],
+    };
+  };
+
+  const setZonePlan = (body: Record<string, unknown>): Plan | null => {
+    const center = body.center as { x: number; z: number } | undefined;
+    const radius = Number(body.radius ?? 0);
+    if (!center || !radius) return null;
+    return { zones: [{ zone: String(body.zone ?? ""), center, radius }] };
+  };
+
+  // ------------------------------------------------------------ composite builders
+
+  server.registerTool(
+    "cs1_build_grid",
+    {
+      description:
+        "Build a whole rectangular road lattice in one call: (cols+1)x(rows+1) nodes and every " +
+        "segment between them. Nodes within snapDistance of existing geometry are reused, so the " +
+        "grid joins the network properly instead of overlapping it. Returns blockCenters — the " +
+        "coordinates of each city block — which is what you pass to cs1_set_zone next, so you " +
+        "never have to do the arithmetic yourself. Verify with cs1_state_road_anomalies " +
+        "afterwards; a correct build reports zero." +
+        WATER_GUARD_NOTE,
+      inputSchema: {
+        roadPrefab: z.string().describe("Exact name from cs1_prefabs_roads, e.g. 'Basic Road'."),
+        origin: point.describe("The lattice corner. Cells grow toward +x and +z from here."),
+        cols: z.number().int().min(1).max(20).describe("Blocks across. cols*rows must be <= 400."),
+        rows: z.number().int().min(1).max(20).describe("Blocks deep. cols*rows must be <= 400."),
+        spacing: z
+          .number()
+          .min(32)
+          .max(256)
+          .optional()
+          .describe(
+            "Metres between parallel roads, default 80. CS1 zoning cells are 8m and zoneable " +
+              "depth is 4 cells per side, so 80 fills the block from both sides. Larger values " +
+              "leave an unzoneable dead strip down the middle.",
+          ),
+        rotationDegrees: z.number().optional().describe("Rotate the lattice about origin."),
+        snapDistance: z
+          .number()
+          .min(0)
+          .max(64)
+          .optional()
+          .describe("Node reuse radius in metres, default 8."),
+        name: z.string().optional().describe("Names the created segments, useful for auditing."),
+        opId,
+        dryRun,
+      },
+    },
+    async (args) => run("/commands/build-grid", args, buildGridPlan),
+  );
+
+  server.registerTool(
+    "cs1_build_neighborhood",
+    {
+      description:
+        "Build a grid, connect it to the existing road network, and zone every block from a mix — " +
+        "one call instead of roughly eighty. The connection step runs before zoning, so a " +
+        "neighborhood can never end up as a zoned orphan island; if it cannot reach a road the " +
+        "grid is rolled back. Returns a manifest of which block got which zone." +
+        WATER_GUARD_NOTE,
+      inputSchema: {
+        roadPrefab: z.string(),
+        center: point.describe("Middle of the neighborhood. The lattice is centred on this."),
+        cols: z.number().int().min(1).max(12).optional(),
+        rows: z.number().int().min(1).max(12).optional(),
+        radiusOrCols: z
+          .number()
+          .int()
+          .min(1)
+          .max(12)
+          .optional()
+          .describe("Shorthand for a square neighborhood when cols/rows are not given."),
+        spacing: z.number().min(32).max(256).optional(),
+        rotationDegrees: z.number().optional(),
+        connectTo: point
+          .optional()
+          .describe(
+            "A point on an existing road. The nearest lattice node is joined to the nearest real " +
+              "road node near here. Omit only if the grid already overlaps the network.",
+          ),
+        connectMaxDistance: z.number().optional().describe("Search radius for connectTo, default 400m."),
+        zoneMix: z
+          .record(z.enum(ZONE_NAMES), z.number())
+          .describe(
+            "Zone name to relative weight, e.g. {\"ResidentialLow\":0.7,\"CommercialLow\":0.3}. " +
+              "Weights are normalised. CS1 has no plain 'Commercial' or 'Residential' zone.",
+          ),
+        commercialPlacement: z
+          .enum(["perimeter", "core", "corners"])
+          .optional()
+          .describe(
+            "Where the minority zones go. perimeter (default) puts shops on the edges facing " +
+              "through traffic; core clusters them centrally; corners is the most compact.",
+          ),
+        preserveOccupied: z
+          .boolean()
+          .optional()
+          .describe("Default true. Leave true unless you intend to repaint developed blocks."),
+        zoneRadius: z
+          .number()
+          .optional()
+          .describe("Zone paint radius per block, default spacing/2."),
+        opId,
+        dryRun,
+      },
+    },
+    async (args) => run("/commands/build-neighborhood", args, buildNeighborhoodPlan),
+  );
+
+  server.registerTool(
+    "cs1_connect",
+    {
+      description:
+        "Join a point to the nearest existing network node of a service. Use it for utilities " +
+        "after placing a plant (toService Water with roadPrefab 'Water Pipe', or Electricity " +
+        "with 'Power Line'; always set roadPrefab, the default is a Basic Road). Never toService " +
+        "Road from a building position: it starts the road at the building centre and runs it " +
+        "through the footprint. Road access comes from placing the building flush with a road. " +
+        "Reports alreadyConnected:true when the point was already on the network, which is a " +
+        "success, not a no-op to retry." +
+        WATER_GUARD_NOTE,
+      inputSchema: {
+        from: point.describe("The stranded point, typically a building position."),
+        toService: z
+          .string()
+          .optional()
+          .describe("ItemClass service to connect to, default Road."),
+        maxDistance: z.number().min(1).max(1000).optional().describe("Search radius, default 200m."),
+        roadPrefab: z.string().optional().describe("Prefab for the connecting segment, default 'Basic Road'."),
+        snapDistance: z.number().min(0).max(64).optional(),
+        name: z.string().optional(),
+        opId,
+        dryRun,
+      },
+    },
+    async (args) => runConnect(args),
+  );
+
+  // --------------------------------------------------------------- primitive builds
+
+  server.registerTool(
+    "cs1_build_network",
+    {
+      description:
+        "Build a single segment between two points. Prefer cs1_build_grid for anything with more " +
+        "than a few segments. Endpoints within snapDistance of an existing node reuse it, which " +
+        "is what makes the result a real intersection rather than a crossing. A surface pedestrian " +
+        "path is refused (reason 'pathOnRoad', with suggestedStart/suggestedEnd) when it runs onto a " +
+        "surface road: the game never joins a path to a road node or splits a road for it. End paths " +
+        "at the road edge; the path end links to the sidewalk by a lane connection within 16.5 m." +
+        WATER_GUARD_NOTE,
+      inputSchema: {
+        roadPrefab: z.string(),
+        start: point,
+        end: point,
+        snapDistance: z.number().min(0).max(64).optional(),
+        name: z.string().optional(),
+        dryRun,
+      },
+    },
+    async (args) => run("/commands/build-network", withGroundElevationStripped(args), networkPlan),
+  );
+
+  server.registerTool(
+    "cs1_set_zone",
+    {
+      description:
+        "Paint one zone type over every zone block within radius of a point. Feed it the " +
+        "blockCenters returned by cs1_build_grid. Check cs1_state_growables first: preserveOccupied " +
+        "defaults to true and should stay true unless you mean to bulldoze development.",
+      inputSchema: {
+        zone: z.enum(ZONE_NAMES),
+        center: point,
+        radius: z.number().min(1).max(256).describe("Metres. Roughly spacing/2 for one grid block."),
+        preserveOccupied: z.boolean().optional().describe("Default true."),
+        dryRun,
+      },
+    },
+    async (args) => run("/commands/set-zone", args, setZonePlan),
+  );
+
+  server.registerTool(
+    "cs1_place_building",
+    {
+      description:
+        "Place a building, including a unique or waterfront attraction. Fair play: locked prefabs are " +
+        "refused, the construction cost is charged like the game's tool (refused when the city cannot " +
+        "pay), and nothing is placed outside owned tiles. Follow every placement with " +
+        "cs1_connect on the same position when it needs road access." +
+        WATER_GUARD_NOTE +
+        " Exempt: buildings with placement mode Shoreline, ShorelineOrGround, or OnWater " +
+        "(harbors, dams, offshore turbines), which keep the existing validate path. The inline " +
+        "plan check tests the centre and the four footprint corners (size from " +
+        "cs1_prefabs_buildings unless widthCells/lengthCells are given) against water and no-build areas.",
+      inputSchema: {
+        buildingPrefab: z.string().describe("Exact name from cs1_prefabs_buildings."),
+        position: point,
+        angleDegrees: z.number().optional(),
+        validate: z.boolean().optional().describe("Run the in-game placement and collision checks."),
+        elevation: z.number().optional().describe("Elevation step used by validated placement."),
+        widthCells: z.number().int().min(1).optional().describe("Footprint override, 8 m cells, for assets the prefab list lacks. Never shrinks below the listed width."),
+        lengthCells: z.number().int().min(1).optional().describe("Footprint override, 8 m cells, for assets the prefab list lacks. Never shrinks below the listed length."),
+        dryRun,
+      },
+    },
+    async ({ widthCells, lengthCells, ...args }) =>
+      run("/commands/place-building", args, (body) => placeBuildingPlan(body, { widthCells, lengthCells })),
+  );
+
+  server.registerTool(
+    "cs1_set_building_active",
+    {
+      description:
+        "Turn an existing service, station, or unique building on or off by id. The bridge uses " +
+        "the game's production-rate setter on the simulation thread; re-read cs1_state_facilities " +
+        "after a simulation step to verify Active and any remaining problem flags.",
+      inputSchema: {
+        id: z.number().int().min(1).describe("Building id from cs1_state_facilities."),
+        active: z.boolean().describe("true to activate, false to deactivate."),
+      },
+    },
+    async (args) => run("/commands/set-building-active", args),
+  );
+
+  server.registerTool(
+    "cs1_move_building",
+    {
+      description: "Move an existing building by id to a new position." + WATER_GUARD_NOTE,
+      inputSchema: {
+        id: z.number().int().describe("Building id from cs1_state_facilities."),
+        position: point,
+        angleDegrees: z.number().optional(),
+        dryRun,
+      },
+    },
+    async (args) => run("/commands/move-building", args),
+  );
+
+  server.registerTool(
+    "cs1_bulldoze",
+    {
+      description:
+        "Delete one entity. keepNodes:false on a netSegment also removes its endpoints when they " +
+        "become orphaned, which is usually what you want when rebuilding a bad connection.",
+      inputSchema: {
+        entityType: z.enum(["building", "netSegment", "netNode", "tree", "prop"]),
+        id: z.number().int(),
+        keepNodes: z.boolean().optional().describe("netSegment only. Default true."),
+      },
+    },
+    async (args) => run("/commands/bulldoze", args),
+  );
+
+  server.registerTool(
+    "cs1_unlock_area",
+    {
+      description:
+        "Buy a map tile, as the game's area panel does: checks it is not owned, is edge-adjacent " +
+        "to an owned tile, the city is under the max-area cap and has reached the next area " +
+        "milestone, then pays the land price and unlocks it. Give tileX/tileZ (0-4, from " +
+        "cs1_state_areas) or a world position x/z inside the tile. dryRun:true reports whether it " +
+        "would succeed and the price.",
+      inputSchema: {
+        tileX: z.number().int().min(0).max(4).optional(),
+        tileZ: z.number().int().min(0).max(4).optional(),
+        x: z.number().optional().describe("World X in metres; used when tileX/tileZ are absent."),
+        z: z.number().optional().describe("World Z in metres; used when tileX/tileZ are absent."),
+        dryRun: z.boolean().optional().describe("Validate and report the price without buying."),
+      },
+    },
+    async (args) => run("/commands/unlock-area", args),
+  );
+
+  // ------------------------------------------------------------------ repair + sim
+
+  server.registerTool(
+    "cs1_repair_zone_clusters",
+    {
+      description:
+        "Fix blocks where zoning came out mottled, by snapping each cluster to its dominant zone. " +
+        "Run cs1_state_zone_anomalies first and again afterwards to confirm it reached zero.",
+      inputSchema: {
+        preferGrowableZone: z
+          .boolean()
+          .optional()
+          .describe("Match existing developed buildings rather than the raw cell majority."),
+        dryRun,
+      },
+    },
+    async (args) => run("/commands/repair-zone-clusters", args),
+  );
+
+  server.registerTool(
+    "cs1_repair_zones_to_growables",
+    {
+      description: "Re-zone blocks to match the buildings that already grew on them.",
+      inputSchema: { dryRun },
+    },
+    async (args) => run("/commands/repair-zones-to-growables", args),
+  );
+
+  server.registerTool(
+    "cs1_set_simulation_speed",
+    {
+      description:
+        "Pause or set simulation speed 1-3. Let the city run before judging whether a build " +
+        "worked — demand, traffic, and problems need simulated time to appear.",
+      inputSchema: {
+        paused: z.boolean().optional(),
+        speed: z.number().int().min(1).max(3).optional(),
+      },
+    },
+    async (args) => run("/commands/set-simulation-speed", args),
+  );
+
+  server.registerTool(
+    "cs1_set_tax_rate",
+    {
+      description:
+        "Set the tax rate for a service. Typical range is 8-13; above that citizens complain and " +
+        "cs1_state_problems starts reporting TaxesTooHigh.",
+      inputSchema: {
+        service: z.string().describe("Residential, Commercial, Industrial, or Office."),
+        rate: z.number().int().min(0).max(29),
+        subService: z.string().optional(),
+        level: z.string().optional(),
+      },
+    },
+    async (args) => run("/commands/set-tax-rate", args),
+  );
+
+  server.registerTool(
+    "cs1_save",
+    {
+      description:
+        "Save the city through the game's own save panel. Returns immediately — poll " +
+        "cs1_state_saves until the file exists before claiming it succeeded. Names are sanitised " +
+        "server-side; read saveName in the response. If the player has \"quit after saving\" " +
+        "checked, this closes the game and the chat box dies. Do not save just to checkpoint " +
+        "while someone is talking in the chat.",
+      inputSchema: { name: z.string().optional().describe("Default AgentAutoSave.") },
+    },
+    async (args) => run("/commands/save", args),
+  );
+
+  // ------------------------------------------------------------------------ capture
+
+  server.registerTool(
+    "cs1_capture",
+    {
+      description:
+        "Render a top-down image of an area and return it as an image. Vision is for VERIFICATION " +
+        "ONLY — never plan layout from a picture, plan from the state tools and use this to confirm " +
+        "what was built. Costs roughly 1-1.5K tokens per call, so capture after finishing a phase, " +
+        "not after every command. Uses its own off-screen camera, so the player's view does not move.",
+      inputSchema: {
+        x: z.number().describe("World X of the view centre."),
+        z: z.number().describe("World Z of the view centre."),
+        size: z
+          .number()
+          .min(100)
+          .max(10000)
+          .optional()
+          .describe("Metres covered edge to edge, default 1000."),
+        pixels: z.number().int().min(256).max(1024).optional().describe("Square resolution, default 1024."),
+        mode: z
+          .string()
+          .optional()
+          .describe(
+            "Info overlay, which is what makes the image legible: None (default — plain view, " +
+              "and the one that shows zoning colours), Traffic, Water, Electricity, LandValue, " +
+              "Pollution, NoisePollution, Health, Happiness, Density, Garbage, Education, " +
+              "TerrainHeight, Transport. One mode per call. CS1 has no 'Zone' overlay; 'Zone' is " +
+              "accepted and resolves to None.",
+          ),
+        settleFrames: z
+          .number()
+          .int()
+          .min(1)
+          .max(120)
+          .optional()
+          .describe("Frames to wait after switching overlay, default 8. Raise if an overlay looks faded."),
+      },
+    },
+    async (args) => {
+      try {
+        const { bytes, headers } = await bridge.getBinary("/capture", {
+          x: args.x,
+          z: args.z,
+          size: args.size,
+          pixels: args.pixels,
+          mode: args.mode,
+          settleFrames: args.settleFrames,
+        });
+
+        const resolved = headers.get("x-bridge-info-mode") ?? args.mode ?? "None";
+        const caption =
+          `Top-down render centred on (${args.x}, ${args.z}), ` +
+          `${args.size ?? 1000}m across, overlay ${resolved}.`;
+
+        return image(Buffer.from(bytes).toString("base64"), "image/png", caption);
+      } catch (error) {
+        return fail(error);
+      }
+    },
+  );
+}
