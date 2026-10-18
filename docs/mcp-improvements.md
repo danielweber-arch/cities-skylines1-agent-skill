@@ -66,7 +66,7 @@ Open items are mirrored in `TODOS.md`.
     `<name>`, and the checker then raised 7 HARD H-NOBUILD findings on every first road.
     **Fix:** `checker.ts` must skip `<!-- -->` blocks and any line that still holds a
     `<placeholder>`; the template should show the example with a different prefix.
-11. **Utilities cannot cross roads mid-segment** (`H-CROSSING`: 7 refusals across power lines and
+11. **FIXED 2026-10-17 (checker false positive): utilities could not cross roads mid-segment.** The MCP checker applied H-CROSSING and H-WATER to pipes and power lines, unlike the game and the bridge. Pipes are now exempt from both; power lines are exempt from crossing checks and water-checked only at their pylons. Original note: (`H-CROSSING`: 7 refusals across power lines and
     water pipes). The agent learns this by trial and error.
     **Fix:** add a `routeAround: true` option on `build-network` for Power Line and Water Pipe.
     It would route through the nearest road nodes, or under the road, as the game's pipe tool
