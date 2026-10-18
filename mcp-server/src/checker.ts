@@ -288,6 +288,16 @@ export function sampleCenterline(a: Point, b: Point, spacing = 8): Point[] {
 }
 
 /** Ground point: |elevation| < 1 m (FindOrCreateNode rounds any non-zero elevation up to 1 m - docs/api.md Water guard). */
+/** Underground pipes (water, heating) pass under roads and water in the game without a junction. */
+export function isPipe(prefab: string): boolean {
+  return /\b(water|heating) pipe\b/i.test(prefab);
+}
+
+/** Overhead power lines span roads; only their pylons (the plan's points) stand on the ground. */
+export function isPowerLine(prefab: string): boolean {
+  return /\bpower line\b/i.test(prefab);
+}
+
 export function isGroundPoint(p: Point, prefab: string): boolean {
   const elevation = p.elevation ?? 0;
   if (Math.abs(elevation) >= 1) return false;
@@ -535,10 +545,12 @@ export async function checkPlan(
         }
       }
 
-      const samples = sampleCenterline(a, b, 8);
+      // Pipes run underground (the bridge's WaterGuard exempts them too); a power line touches
+      // the ground only at its pylons, so only its own points are water-checked.
+      const samples = isPowerLine(road.prefab) ? [a, b] : sampleCenterline(a, b, 8);
       for (const s of samples) {
         pointsChecked++;
-        if (isGroundPoint(s, road.prefab)) {
+        if (!isPipe(road.prefab) && isGroundPoint(s, road.prefab)) {
           waterCheckPoints.push({ p: { x: s.x, z: s.z }, label: `road "${roadLabel}" centreline` });
         }
         checkNoBuild({ x: s.x, z: s.z }, "H-NOBUILD", `Road "${roadLabel}" point (${s.x},${s.z})`);
@@ -641,6 +653,8 @@ export async function checkPlan(
   try {
     const existing = await io.networksRoad();
     for (const road of roads) {
+      // Pipes pass under roads and power lines span them; neither makes or needs a junction.
+      if (isPipe(road.prefab) || isPowerLine(road.prefab)) continue;
       const roadLabel = truncateName(road.name ?? road.prefab);
       for (let i = 0; i < road.points.length - 1; i++) {
         const pa = road.points[i];

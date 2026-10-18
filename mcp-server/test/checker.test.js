@@ -608,3 +608,53 @@ test("cs1_connect stays exempt from the plan check for non-Road services (pipes/
   const connectPosts = bridge.calls.filter((c) => c.method === "post" && c.path === "/commands/connect");
   assert.equal(connectPosts.length, 1, "no dry-run probe for a non-Road service");
 });
+
+// --------------------------------------------------------------------- utilities (2026-10-17)
+
+test("utilities: a Water Pipe crossing a road mid-segment and passing under water is not blocked", async () => {
+  const io = emptyIo({
+    networksRoad: async () => ({
+      total: 1,
+      returned: 1,
+      segments: [{ id: 1, prefab: "Highway", start: { x: -50, z: 100 }, end: { x: 50, z: 100 } }],
+    }),
+    terrainPoints: async (points) => points.map((p) => ({ x: p.x, z: p.z, hasWater: p.z > 150 && p.z < 250, terrainHeight: 40 })),
+  });
+  const plan = { roads: [{ prefab: "Water Pipe", points: [{ x: 0, z: 0 }, { x: 0, z: 300 }] }] };
+  const result = await checkPlan(plan, io);
+  assert.equal(result.hard.filter((h) => h.rule === "H-CROSSING" || h.rule === "H-WATER").length, 0, JSON.stringify(result.hard));
+});
+
+test("utilities: a Power Line spans a road, but a pylon standing in water is still blocked", async () => {
+  const io = emptyIo({
+    networksRoad: async () => ({
+      total: 1,
+      returned: 1,
+      segments: [{ id: 1, prefab: "Basic Road", start: { x: -50, z: 100 }, end: { x: 50, z: 100 } }],
+    }),
+    // Water under the span (z 120..180) and beyond z 250; the pylons at z 0 and 200 are dry.
+    terrainPoints: async (points) =>
+      points.map((p) => ({ x: p.x, z: p.z, hasWater: (p.z > 120 && p.z < 180) || p.z > 250, terrainHeight: 40 })),
+  });
+  const spans = { roads: [{ prefab: "Power Line", points: [{ x: 0, z: 0 }, { x: 0, z: 200 }] }] };
+  const ok = await checkPlan(spans, io);
+  assert.equal(ok.hard.filter((h) => h.rule === "H-CROSSING" || h.rule === "H-WATER").length, 0, JSON.stringify(ok.hard));
+  const wet = { roads: [{ prefab: "Power Line", points: [{ x: 0, z: 0 }, { x: 0, z: 300 }] }] };
+  const blocked = await checkPlan(wet, io);
+  assert.ok(blocked.hard.some((h) => h.rule === "H-WATER"), "pylon in water is blocked");
+});
+
+test("utilities: a ground road whose name merely contains 'pipe' keeps its water and crossing checks", async () => {
+  const io = emptyIo({
+    networksRoad: async () => ({
+      total: 1,
+      returned: 1,
+      segments: [{ id: 1, prefab: "Basic Road", start: { x: -50, z: 100 }, end: { x: 50, z: 100 } }],
+    }),
+    terrainPoints: async (points) => points.map((p) => ({ x: p.x, z: p.z, hasWater: p.z > 150 && p.z < 250, terrainHeight: 40 })),
+  });
+  const plan = { roads: [{ prefab: "Pipeline Road", points: [{ x: 0, z: 0 }, { x: 0, z: 300 }] }] };
+  const result = await checkPlan(plan, io);
+  assert.ok(result.hard.some((h) => h.rule === "H-CROSSING"), "crossing still checked");
+  assert.ok(result.hard.some((h) => h.rule === "H-WATER"), "water still checked");
+});
